@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Results — Resume match</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; line-height: 1.45; }
+    body { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.25rem; }
+    h3 { font-size: 1rem; margin-top: 1rem; }
+    .muted { color: #555; font-size: 0.9rem; }
+    .err { background: #ffe8e8; border: 1px solid #c00; padding: 0.75rem; border-radius: 6px; }
+    textarea { width: 100%; min-height: 140px; padding: 0.6rem; font: inherit; box-sizing: border-box; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+    button { padding: 0.5rem 1rem; font: inherit; cursor: pointer; }
+    .score { font-size: 1.5rem; font-weight: 600; margin: 0.5rem 0; }
+    a { color: #0a58ca; }
+    ul { margin: 0.3rem 0; padding-left: 1.2rem; }
+  </style>
+</head>
+<body>
+  <p><a href="{{ url_for('index') }}">← Back</a></p>
+  <h1>Analysis</h1>
+
+  {% if error %}
+  <p class="err">{{ error }}</p>
+  {% else %}
+  <p class="score">Match score: {{ "%.1f"|format(score) }} / 100</p>
+  <p class="muted">Similarity is a text signal only—not a guarantee of interview fit.</p>
+  <div class="row">
+    <div>
+      <h3>Keywords to add or emphasize</h3>
+      <ul>
+        {% for term, c in gaps %}
+        <li><strong>{{ term }}</strong> (×{{ c }} in posting)</li>
+        {% else %}
+        <li>(none standout)</li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div>
+      <h3>Overlap</h3>
+      <ul>
+        {% for term, rc, jc in shared %}
+        <li><strong>{{ term }}</strong> — resume ×{{ rc }}, posting ×{{ jc }}</li>
+        {% else %}
+        <li>(none)</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% if extra %}
+  <h3>Resume terms less common in this posting</h3>
+  <ul>
+    {% for term, c in extra %}
+    <li>{{ term }} (×{{ c }} in resume)</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+
+  <hr />
+  <h3>Edit and re-run</h3>
+  <form method="post" action="{{ url_for('analyze') }}">
+    <div class="row">
+      <div>
+        <label for="resume">Resume</label>
+        <textarea id="resume" name="resume">{{ resume }}</textarea>
+      </div>
+      <div>
+        <label for="jd">Job description</label>
+        <textarea id="jd" name="jd">{{ jd }}</textarea>
+      </div>
+    </div>
+    <p><button type="submit">Analyze again</button></p>
+  </form>
+</body>
+</html>

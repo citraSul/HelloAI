@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: resume-job-matcher
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health

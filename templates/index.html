@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Resume ↔ Job match</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; line-height: 1.45; }
+    body { max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1 { font-size: 1.35rem; }
+    .muted { color: #555; font-size: 0.9rem; }
+    textarea { width: 100%; min-height: 200px; padding: 0.6rem; font: inherit; box-sizing: border-box; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+    button { padding: 0.5rem 1rem; font: inherit; cursor: pointer; }
+    .warn { background: #fff8e6; border: 1px solid #e6c200; padding: 0.75rem; border-radius: 6px; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Resume ↔ job description matcher</h1>
+  <p class="muted">Text is analyzed for this request only and not saved to disk by this app. Do not paste secrets or passwords.</p>
+  <div class="warn">
+    This tool does not connect to LinkedIn or submit applications—use it to tune your resume, then apply yourself on the employer’s site.
+  </div>
+  <form method="post" action="{{ url_for('analyze') }}">
+    <div class="row">
+      <div>
+        <label for="resume"><strong>Your resume</strong> (paste text)</label>
+        <textarea id="resume" name="resume" placeholder="Paste resume…"></textarea>
+      </div>
+      <div>
+        <label for="jd"><strong>Job description</strong></label>
+        <textarea id="jd" name="jd" placeholder="Paste job posting…"></textarea>
+      </div>
+    </div>
+    <p><button type="submit">Analyze match</button></p>
+  </form>
+</body>
+</html>
