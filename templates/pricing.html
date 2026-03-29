@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>Pricing</title>
+  <style>
+    body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; background: #f4f7fb; color: #0f172a; }
+    .container { max-width: 980px; margin: 0 auto; padding: 2rem 1rem; }
+    .top { display: flex; justify-content: space-between; align-items: center; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+    .card { background: #fff; border: 1px solid #dbe3ef; border-radius: 14px; padding: 1rem; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06); }
+    .price { font-size: 1.5rem; font-weight: 700; margin: 0.3rem 0; }
+    .btn { border: 0; border-radius: 10px; background: #2563eb; color: #fff; font: inherit; font-weight: 600; padding: 0.62rem 0.95rem; cursor: pointer; }
+    .muted { color: #475569; font-size: 0.92rem; }
+    ul { margin: 0; padding-left: 1.1rem; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <div class="top">
+      <h1>Pricing</h1>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <a href="{{ url_for('index') }}">← Back</a>
+        {% if is_authenticated %}
+        <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button class="btn" type="submit" style="background:#334155;">Logout</button>
+        </form>
+        {% else %}
+        <a href="{{ url_for('login') }}">Login</a>
+        {% endif %}
+      </div>
+    </div>
+    <p class="muted">Upgrade to unlock automated alert intake, saved job pipelines, and unlimited tailoring sessions.</p>
+    <div class="grid">
+      <section class="card">
+        <h2>Free</h2>
+        <p class="price">$0</p>
+        <ul>
+          <li>Manual JD paste + analysis</li>
+          <li>Profession and skill-growth scoring</li>
+          <li>Basic tailoring actions</li>
+        </ul>
+      </section>
+      <section class="card">
+        <h2>Pro</h2>
+        <p class="price">$12 / month</p>
+        <ul>
+          <li>Email alert ingestion workflow</li>
+          <li>Saved history and application pipeline</li>
+          <li>Priority match notifications</li>
+        </ul>
+        <p class="muted" id="status"></p>
+        <button id="upgrade-btn" class="btn" type="button">Upgrade to Pro</button>
+      </section>
+    </div>
+  </main>
+  <script>
+    (function () {
+      var btn = document.getElementById("upgrade-btn");
+      var status = document.getElementById("status");
+      if (!btn) return;
+      btn.addEventListener("click", async function () {
+        btn.disabled = true;
+        if (status) status.textContent = "Creating checkout session...";
+        try {
+          var resp = await fetch("/api/create-checkout-session", {
+            method: "POST",
+            headers: { "X-CSRF-Token": document.querySelector('meta[name=\"csrf-token\"]').content }
+          });
+          var data = await resp.json();
+          if (!resp.ok || !data.ok) {
+            if (status) status.textContent = data.message || "Checkout unavailable.";
+            btn.disabled = false;
+            return;
+          }
+          window.location.href = data.url;
+        } catch (e) {
+          if (status) status.textContent = "Network error while creating checkout session.";
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

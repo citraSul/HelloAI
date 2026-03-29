@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>Dashboard</title>
+  <style>
+    body { margin: 0; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f7fb; color: #0f172a; }
+    .container { max-width: 1080px; margin: 0 auto; padding: 2rem 1rem; }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #dbe3ef; border-radius: 12px; overflow: hidden; }
+    th, td { text-align: left; padding: 0.65rem; border-bottom: 1px solid #e8edf5; font-size: 0.9rem; }
+    th { background: #f8fbff; color: #334155; }
+    .badge { display: inline-block; padding: 0.18rem 0.45rem; border-radius: 999px; background: #eef4ff; color: #184a8a; font-size: 0.78rem; }
+    a { color: #2563eb; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <div class="top">
+      <h1>Application Dashboard</h1>
+      <div style="display:flex; align-items:center; gap:0.6rem;">
+        <a href="{{ url_for('index') }}">+ New analysis</a>
+        <a href="{{ url_for('pricing') }}">Pricing</a>
+        <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" style="border:1px solid #dbe3ef;background:#fff;border-radius:8px;padding:0.35rem 0.6rem;cursor:pointer;">Logout</button>
+        </form>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Created</th>
+          <th>Profession</th>
+          <th>Correlated Score</th>
+          <th>Decision</th>
+          <th>Effort</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in analyses %}
+        <tr>
+          <td>#{{ row["id"] }}</td>
+          <td>{{ row["created_at"] }}</td>
+          <td>{{ row["profession"] }}</td>
+          <td>{{ "%.1f"|format(row["correlated_score"]) }}</td>
+          <td>{{ row["match_level"] }}</td>
+          <td>{{ row["effort_level"] }}</td>
+          <td><span class="badge">{{ row["status"] }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7">No analyses yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

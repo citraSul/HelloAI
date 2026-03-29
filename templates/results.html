@@ -3,78 +3,434 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
   <title>Results — Resume match</title>
   <style>
-    :root { font-family: system-ui, sans-serif; line-height: 1.45; }
-    body { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
-    h1 { font-size: 1.25rem; }
-    h3 { font-size: 1rem; margin-top: 1rem; }
-    .muted { color: #555; font-size: 0.9rem; }
-    .err { background: #ffe8e8; border: 1px solid #c00; padding: 0.75rem; border-radius: 6px; }
-    textarea { width: 100%; min-height: 140px; padding: 0.6rem; font: inherit; box-sizing: border-box; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
-    button { padding: 0.5rem 1rem; font: inherit; cursor: pointer; }
-    .score { font-size: 1.5rem; font-weight: 600; margin: 0.5rem 0; }
-    a { color: #0a58ca; }
-    ul { margin: 0.3rem 0; padding-left: 1.2rem; }
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #dbe3ef;
+      --primary: #2563eb;
+      --good: #059669;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --surface: #fcfdff;
+    }
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0b1220;
+      --card: #111a2e;
+      --text: #e6edf9;
+      --muted: #9db0d1;
+      --border: #243252;
+      --primary: #5b8cff;
+      --good: #14b8a6;
+      --warn: #f59e0b;
+      --bad: #f87171;
+      --surface: #0e172b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.45;
+      color: var(--text);
+      background: radial-gradient(circle at top, #eef4ff 0%, var(--bg) 45%);
+    }
+    [data-theme="dark"] body {
+      background: radial-gradient(circle at top, #182743 0%, var(--bg) 45%);
+    }
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 2rem 1rem 2.5rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+      padding: 1.2rem;
+      margin-bottom: 1rem;
+    }
+    h1 { margin: 0; font-size: clamp(1.25rem, 2.3vw, 1.8rem); letter-spacing: -0.01em; }
+    h3 { margin: 0 0 0.6rem; font-size: 1rem; }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .top-right { display: flex; align-items: center; gap: 0.6rem; }
+    .link {
+      text-decoration: none;
+      color: var(--primary);
+      font-weight: 600;
+      font-size: 0.92rem;
+    }
+    .theme-btn, .mini-btn {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      border-radius: 10px;
+      font: inherit;
+      font-size: 0.86rem;
+      padding: 0.4rem 0.65rem;
+      cursor: pointer;
+    }
+    .status-inline {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .muted { color: var(--muted); font-size: 0.92rem; margin: 0.25rem 0 0; }
+    .err {
+      background: #ffe8e8;
+      border: 1px solid #f2b8b8;
+      color: #8f1919;
+      padding: 0.8rem;
+      border-radius: 10px;
+    }
+    .score-wrap { display: grid; gap: 0.5rem; margin-top: 0.8rem; }
+    .score { font-size: 1.6rem; font-weight: 700; margin: 0; }
+    .meter {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      background: #e5eaf3;
+      overflow: hidden;
+      border: 1px solid #d5deeb;
+    }
+    .meter > span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #60a5fa 0%, #2563eb 100%);
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.8rem;
+      padding: 0.22rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid #d6e1f5;
+      background: #f8fbff;
+      color: #17427a;
+      font-weight: 600;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.8rem;
+    }
+    .kpi {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.65rem 0.75rem;
+      background: var(--surface);
+    }
+    .kpi .label { color: var(--muted); font-size: 0.8rem; }
+    .kpi .value { font-size: 1.02rem; font-weight: 700; margin-top: 0.15rem; }
+    .actions-list { margin: 0; padding-left: 1.1rem; }
+    .actions-list li { margin: 0.45rem 0; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.8rem; }
+    @media (max-width: 840px) { .row { grid-template-columns: 1fr; } }
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.9rem;
+      background: var(--surface);
+    }
+    ul { margin: 0; padding-left: 1.15rem; }
+    li { margin: 0.22rem 0; color: #12223d; }
+    .chip { color: #4b5563; font-size: 0.82rem; margin-left: 0.25rem; }
+    hr { border: 0; border-top: 1px solid var(--border); margin: 1rem 0; }
+    label {
+      display: block;
+      margin-bottom: 0.45rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #0b2447;
+    }
+    textarea {
+      width: 100%;
+      min-height: 170px;
+      border: 1px solid #cfd9ea;
+      border-radius: 10px;
+      padding: 0.75rem 0.8rem;
+      font: inherit;
+      color: #111827;
+      background: #fff;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.18s, box-shadow 0.18s;
+    }
+    select {
+      width: 100%;
+      border: 1px solid #cfd9ea;
+      border-radius: 10px;
+      padding: 0.65rem 0.75rem;
+      font: inherit;
+      color: #111827;
+      background: #fff;
+      outline: none;
+    }
+    textarea:focus {
+      border-color: #7aa2f7;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+    .btn {
+      margin-top: 0.75rem;
+      border: 0;
+      border-radius: 10px;
+      background: var(--primary);
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      padding: 0.64rem 1rem;
+      cursor: pointer;
+    }
+    .btn:hover { background: #1d4ed8; }
+    .sticky-bar {
+      position: sticky;
+      bottom: 10px;
+      margin-top: 1rem;
+      display: flex;
+      justify-content: flex-end;
+      pointer-events: none;
+    }
+    .sticky-bar .btn { pointer-events: auto; box-shadow: 0 8px 24px rgba(37, 99, 235, 0.3); }
+    .copy-msg { margin-left: 0.5rem; font-size: 0.82rem; color: var(--muted); }
+    @media (max-width: 840px) {
+      .sticky-bar { justify-content: stretch; }
+      .sticky-bar .btn { width: 100%; }
+    }
   </style>
 </head>
 <body>
-  <p><a href="{{ url_for('index') }}">← Back</a></p>
-  <h1>Analysis</h1>
-
-  {% if error %}
-  <p class="err">{{ error }}</p>
-  {% else %}
-  <p class="score">Match score: {{ "%.1f"|format(score) }} / 100</p>
-  <p class="muted">Similarity is a text signal only—not a guarantee of interview fit.</p>
-  <div class="row">
-    <div>
-      <h3>Keywords to add or emphasize</h3>
-      <ul>
-        {% for term, c in gaps %}
-        <li><strong>{{ term }}</strong> (×{{ c }} in posting)</li>
-        {% else %}
-        <li>(none standout)</li>
-        {% endfor %}
-      </ul>
-    </div>
-    <div>
-      <h3>Overlap</h3>
-      <ul>
-        {% for term, rc, jc in shared %}
-        <li><strong>{{ term }}</strong> — resume ×{{ rc }}, posting ×{{ jc }}</li>
-        {% else %}
-        <li>(none)</li>
-        {% endfor %}
-      </ul>
-    </div>
-  </div>
-  {% if extra %}
-  <h3>Resume terms less common in this posting</h3>
-  <ul>
-    {% for term, c in extra %}
-    <li>{{ term }} (×{{ c }} in resume)</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  {% endif %}
-
-  <hr />
-  <h3>Edit and re-run</h3>
-  <form method="post" action="{{ url_for('analyze') }}">
-    <div class="row">
-      <div>
-        <label for="resume">Resume</label>
-        <textarea id="resume" name="resume">{{ resume }}</textarea>
+  <main class="container">
+    <section class="card">
+      <div class="top">
+        <h1>Analysis results</h1>
+        <div class="top-right">
+          <button id="theme-toggle" class="theme-btn" type="button">Toggle dark mode</button>
+          <a class="link" href="{{ url_for('dashboard') }}">Dashboard</a>
+          <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button class="mini-btn" type="submit">Logout</button>
+          </form>
+          <a class="link" href="{{ url_for('index') }}">← New analysis</a>
+        </div>
       </div>
-      <div>
-        <label for="jd">Job description</label>
-        <textarea id="jd" name="jd">{{ jd }}</textarea>
+      {% if error %}
+      <p class="err">{{ error }}</p>
+      {% else %}
+      <div class="score-wrap">
+        <p class="score">Match score: {{ "%.1f"|format(score) }} / 100</p>
+        <div class="meter">
+          <span style="width: {{ score }}%;"></span>
+        </div>
+        <p class="muted">
+          Similarity is a text signal only.
+          {% if score >= 75 %}
+          <span class="badge">Strong alignment</span>
+          {% elif score >= 50 %}
+          <span class="badge">Moderate alignment</span>
+          {% else %}
+          <span class="badge">Needs tailoring</span>
+          {% endif %}
+        </p>
       </div>
-    </div>
-    <p><button type="submit">Analyze again</button></p>
-  </form>
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="label">Profession fit score</div>
+          <div class="value">{{ "%.1f"|format(profession_score) }} / 100</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Correlated score</div>
+          <div class="value">{{ "%.1f"|format(correlated_score) }} / 100</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Decision</div>
+          <div class="value">{{ match_level }} · {{ effort_level }}</div>
+        </div>
+      </div>
+      {% if profession_terms %}
+      <p class="muted">Matched profession terms: {{ profession_terms|join(", ") }}</p>
+      {% endif %}
+      <p class="muted">Skill-growth correlation: {{ "%.1f"|format(growth_score) }} / 100</p>
+      {% if growth_matches %}
+      <p class="muted">Matched new skills: {% for s, lvl in growth_matches %}{{ s }} ({{ lvl }}){% if not loop.last %}, {% endif %}{% endfor %}</p>
+      {% endif %}
+
+      <div class="row">
+        <div class="panel">
+          <div class="top" style="margin-bottom:0.45rem;">
+            <h3 style="margin:0;">Keywords to add or emphasize</h3>
+            <div>
+              <button id="copy-keywords" class="mini-btn" type="button">Copy top keywords</button>
+              <span id="copy-msg" class="copy-msg"></span>
+            </div>
+          </div>
+          <ul>
+            {% for term, c in gaps %}
+            <li data-keyword="{{ term }}"><strong>{{ term }}</strong><span class="chip">x{{ c }} in posting</span></li>
+            {% else %}
+            <li>(none standout)</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Current overlap</h3>
+          <ul>
+            {% for term, rc, jc in shared %}
+            <li><strong>{{ term }}</strong><span class="chip">resume x{{ rc }}, posting x{{ jc }}</span></li>
+            {% else %}
+            <li>(none)</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      {% if extra %}
+      <div class="panel" style="margin-top: 1rem;">
+        <h3>Resume terms less common in this posting</h3>
+        <ul>
+          {% for term, c in extra %}
+          <li>{{ term }}<span class="chip">x{{ c }} in resume</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      <div class="panel" style="margin-top: 1rem;">
+        <h3>Tailor actions (truthful resume coaching)</h3>
+        <ul class="actions-list">
+          {% for item in tailor_actions %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="panel" style="margin-top: 1rem;">
+        <h3>Application pipeline status</h3>
+        <div class="status-inline">
+          <label for="status-select" style="margin:0;">Current status</label>
+          <select id="status-select" style="max-width:220px;">
+            <option value="new">new</option>
+            <option value="reviewed">reviewed</option>
+            <option value="applied">applied</option>
+            <option value="interview">interview</option>
+            <option value="rejected">rejected</option>
+            <option value="offer">offer</option>
+          </select>
+          <button id="save-status" class="mini-btn" type="button">Save status</button>
+          <span id="status-msg" class="copy-msg"></span>
+        </div>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h3>Edit and re-run</h3>
+      <form method="post" action="{{ url_for('analyze') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="row">
+          <div>
+            <label for="profession">Profession / major</label>
+            <select id="profession" name="profession" required>
+              <option value="">Select your field</option>
+              <option value="java" {% if profession == "java" %}selected{% endif %}>Java</option>
+              <option value="web" {% if profession == "web" %}selected{% endif %}>Web</option>
+              <option value="ai" {% if profession == "ai" %}selected{% endif %}>AI / ML</option>
+              <option value="accounting" {% if profession == "accounting" %}selected{% endif %}>Accounting</option>
+            </select>
+          </div>
+          <div></div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="skill_growth">New skill growth (optional)</label>
+            <textarea id="skill_growth" name="skill_growth">{{ skill_growth }}</textarea>
+          </div>
+          <div>
+            <label>Monetization</label>
+            <p class="muted">Upgrade for alerts/history: <a class="link" href="{{ url_for('pricing') }}">Pricing</a></p>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="resume">Resume</label>
+            <textarea id="resume" name="resume">{{ resume }}</textarea>
+          </div>
+          <div>
+            <label for="jd">Job description</label>
+            <textarea id="jd" name="jd">{{ jd }}</textarea>
+          </div>
+        </div>
+        <div class="sticky-bar">
+          <button class="btn" type="submit">Analyze again</button>
+        </div>
+      </form>
+    </section>
+  </main>
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var toggle = document.getElementById("theme-toggle");
+      var saved = localStorage.getItem("theme");
+      if (saved === "dark" || saved === "light") {
+        root.setAttribute("data-theme", saved);
+      }
+      if (toggle) {
+        toggle.addEventListener("click", function () {
+          var current = root.getAttribute("data-theme") === "dark" ? "dark" : "light";
+          var next = current === "dark" ? "light" : "dark";
+          root.setAttribute("data-theme", next);
+          localStorage.setItem("theme", next);
+        });
+      }
+
+      var copyBtn = document.getElementById("copy-keywords");
+      var copyMsg = document.getElementById("copy-msg");
+      if (copyBtn) {
+        copyBtn.addEventListener("click", async function () {
+          var nodes = document.querySelectorAll("[data-keyword]");
+          var terms = Array.prototype.map.call(nodes, function (n) { return n.getAttribute("data-keyword"); });
+          var text = terms.slice(0, 12).join(", ");
+          if (!text) {
+            if (copyMsg) copyMsg.textContent = "No keywords to copy";
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(text);
+            if (copyMsg) copyMsg.textContent = "Copied";
+            setTimeout(function () { if (copyMsg) copyMsg.textContent = ""; }, 1500);
+          } catch (e) {
+            if (copyMsg) copyMsg.textContent = "Copy failed";
+          }
+        });
+      }
+
+      var saveBtn = document.getElementById("save-status");
+      var statusSel = document.getElementById("status-select");
+      var statusMsg = document.getElementById("status-msg");
+      if (saveBtn && statusSel) {
+        saveBtn.addEventListener("click", async function () {
+          try {
+            var resp = await fetch("/api/analyses/{{ analysis_id }}/status", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content
+              },
+              body: JSON.stringify({ status: statusSel.value })
+            });
+            var data = await resp.json();
+            statusMsg.textContent = data.ok ? "Saved" : (data.message || "Failed");
+          } catch (e) {
+            statusMsg.textContent = "Network error";
+          }
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

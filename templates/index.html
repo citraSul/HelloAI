@@ -3,37 +3,275 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
   <title>Resume ↔ Job match</title>
   <style>
-    :root { font-family: system-ui, sans-serif; line-height: 1.45; }
-    body { max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
-    h1 { font-size: 1.35rem; }
-    .muted { color: #555; font-size: 0.9rem; }
-    textarea { width: 100%; min-height: 200px; padding: 0.6rem; font: inherit; box-sizing: border-box; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
-    button { padding: 0.5rem 1rem; font: inherit; cursor: pointer; }
-    .warn { background: #fff8e6; border: 1px solid #e6c200; padding: 0.75rem; border-radius: 6px; margin: 1rem 0; }
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #dbe3ef;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --warn-bg: #fff7e8;
+      --warn-border: #f8d38f;
+      --surface: #fcfdff;
+    }
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0b1220;
+      --card: #111a2e;
+      --text: #e6edf9;
+      --muted: #9db0d1;
+      --border: #243252;
+      --primary: #5b8cff;
+      --primary-hover: #7aa2ff;
+      --warn-bg: #2c2414;
+      --warn-border: #5a4723;
+      --surface: #0e172b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.45;
+      color: var(--text);
+      background: radial-gradient(circle at top, #eef4ff 0%, var(--bg) 45%);
+    }
+    [data-theme="dark"] body {
+      background: radial-gradient(circle at top, #182743 0%, var(--bg) 45%);
+    }
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 2rem 1rem 2.5rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+      padding: 1.25rem;
+    }
+    h1 {
+      margin: 0 0 0.5rem;
+      font-size: clamp(1.3rem, 2.6vw, 1.9rem);
+      letter-spacing: -0.01em;
+    }
+    .muted { color: var(--muted); font-size: 0.95rem; margin: 0; }
+    .warn {
+      margin-top: 1rem;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: #7c4a03;
+      padding: 0.85rem;
+      border-radius: 10px;
+      font-size: 0.92rem;
+    }
+    .row {
+      margin-top: 1rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 840px) { .row { grid-template-columns: 1fr; } }
+    .field-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.9rem;
+      background: var(--surface);
+    }
+    label {
+      display: block;
+      margin-bottom: 0.45rem;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: #0b2447;
+    }
+    textarea {
+      width: 100%;
+      min-height: 260px;
+      border: 1px solid #cfd9ea;
+      border-radius: 10px;
+      padding: 0.75rem 0.8rem;
+      font: inherit;
+      color: #111827;
+      background: #fff;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.18s, box-shadow 0.18s;
+    }
+    select {
+      width: 100%;
+      border: 1px solid #cfd9ea;
+      border-radius: 10px;
+      padding: 0.65rem 0.75rem;
+      font: inherit;
+      color: #111827;
+      background: #fff;
+      outline: none;
+    }
+    textarea:focus {
+      border-color: #7aa2f7;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+    .actions {
+      margin-top: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.8rem;
+      margin-bottom: 0.5rem;
+    }
+    .theme-btn {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      border-radius: 10px;
+      font: inherit;
+      font-size: 0.88rem;
+      padding: 0.45rem 0.65rem;
+      cursor: pointer;
+    }
+    .btn {
+      border: 0;
+      border-radius: 10px;
+      background: var(--primary);
+      color: #fff;
+      font: inherit;
+      font-weight: 600;
+      padding: 0.68rem 1rem;
+      cursor: pointer;
+      transition: background 0.18s;
+    }
+    .btn:hover { background: var(--primary-hover); }
+    .btn-secondary {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-weight: 600;
+      padding: 0.68rem 1rem;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .hint { color: var(--muted); font-size: 0.88rem; }
+    .sticky-bar {
+      position: sticky;
+      bottom: 10px;
+      margin-top: 1rem;
+      display: flex;
+      justify-content: flex-end;
+      pointer-events: none;
+    }
+    .sticky-bar .btn { pointer-events: auto; box-shadow: 0 8px 24px rgba(37, 99, 235, 0.3); }
+    @media (max-width: 840px) {
+      .sticky-bar { justify-content: stretch; }
+      .sticky-bar .btn { width: 100%; }
+    }
   </style>
 </head>
 <body>
-  <h1>Resume ↔ job description matcher</h1>
-  <p class="muted">Text is analyzed for this request only and not saved to disk by this app. Do not paste secrets or passwords.</p>
-  <div class="warn">
-    This tool does not connect to LinkedIn or submit applications—use it to tune your resume, then apply yourself on the employer’s site.
-  </div>
-  <form method="post" action="{{ url_for('analyze') }}">
-    <div class="row">
-      <div>
-        <label for="resume"><strong>Your resume</strong> (paste text)</label>
-        <textarea id="resume" name="resume" placeholder="Paste resume…"></textarea>
+  <main class="container">
+    <section class="card">
+      <div class="topbar">
+        <h1>Resume ↔ job description matcher</h1>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          {% if is_authenticated %}
+          <a class="btn-secondary" href="{{ url_for('dashboard') }}">Dashboard</a>
+          <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button class="btn-secondary" type="submit">Logout</button>
+          </form>
+          {% else %}
+          <a class="btn-secondary" href="{{ url_for('login') }}">Login</a>
+          <a class="btn-secondary" href="{{ url_for('signup') }}">Sign up</a>
+          {% endif %}
+          <button id="theme-toggle" class="theme-btn" type="button">Toggle dark mode</button>
+        </div>
       </div>
-      <div>
-        <label for="jd"><strong>Job description</strong></label>
-        <textarea id="jd" name="jd" placeholder="Paste job posting…"></textarea>
+      <p class="muted">Get a quick fit score and keyword guidance in seconds. Text is processed for this request and not persisted by app logic.</p>
+      <div class="warn">
+        Paste job description from LinkedIn manually (no auto-apply automation). The app will include profession correlation in your result.
       </div>
-    </div>
-    <p><button type="submit">Analyze match</button></p>
-  </form>
-</body>
+      <form method="post" action="{{ url_for('analyze') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="row">
+          <div class="field-card">
+            <label for="profession">Your profession / major</label>
+            <select id="profession" name="profession" required>
+              <option value="">Select your field</option>
+              <option value="java" {% if profession == "java" %}selected{% endif %}>Java</option>
+              <option value="web" {% if profession == "web" %}selected{% endif %}>Web</option>
+              <option value="ai" {% if profession == "ai" %}selected{% endif %}>AI / ML</option>
+              <option value="accounting" {% if profession == "accounting" %}selected{% endif %}>Accounting</option>
+            </select>
+          </div>
+          <div class="field-card">
+            <label>Plan</label>
+            <a class="btn-secondary" href="{{ url_for('pricing') }}">View pricing / upgrade</a>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field-card">
+            <label for="skill_growth">New skill growth (optional)</label>
+            <textarea id="skill_growth" name="skill_growth" placeholder="Examples: langchain:learning, aws:exposure, pytorch:hands_on">{{ skill_growth }}</textarea>
+          </div>
+          <div class="field-card">
+            <label>Skill level format</label>
+            <p class="hint">Use <code>skill:level</code> with levels: <code>learning</code>, <code>exposure</code>, <code>hands_on</code>, <code>expert</code>.</p>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field-card">
+            <label for="resume">Your resume (paste text)</label>
+            <textarea id="resume" name="resume" placeholder="Paste resume text here..."></textarea>
+          </div>
+          <div class="field-card">
+            <label for="jd">Job description</label>
+            <textarea id="jd" name="jd" placeholder="Paste job posting text here..."></textarea>
+          </div>
+        </div>
+        <div class="actions">
+          <span class="hint">Tip: Include responsibilities and required skills for better results.</span>
+        </div>
+        <div class="sticky-bar">
+          <button class="btn" type="submit">Analyze match</button>
+        </div>
+      </form>
+    </section>
+  </main>
+  <p style="text-align:center; color:#64748b; font-size:0.85rem;">
+    <a href="{{ url_for('privacy') }}">Privacy</a> ·
+    <a href="{{ url_for('terms') }}">Terms</a> ·
+    <a href="{{ url_for('refund') }}">Refund</a>
+  </p>
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var toggle = document.getElementById("theme-toggle");
+      var saved = localStorage.getItem("theme");
+      if (saved === "dark" || saved === "light") {
+        root.setAttribute("data-theme", saved);
+      }
+      if (toggle) {
+        toggle.addEventListener("click", function () {
+          var current = root.getAttribute("data-theme") === "dark" ? "dark" : "light";
+          var next = current === "dark" ? "light" : "dark";
+          root.setAttribute("data-theme", next);
+          localStorage.setItem("theme", next);
+        });
+      }
+    })();
+  </script>
+ </body>
 </html>

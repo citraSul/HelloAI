@@ -19,6 +19,32 @@ _STOP = frozenset(
     """.split()
 )
 
+_PROFESSION_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "java": (
+        "java", "spring", "springboot", "hibernate", "jpa", "microservices",
+        "maven", "gradle", "junit", "rest", "kafka",
+    ),
+    "web": (
+        "javascript", "typescript", "react", "angular", "vue", "html", "css",
+        "node", "frontend", "backend", "fullstack", "nextjs",
+    ),
+    "ai": (
+        "python", "machine", "learning", "llm", "nlp", "tensorflow", "pytorch",
+        "data", "model", "prompt", "rag", "embedding",
+    ),
+    "accounting": (
+        "accounting", "gaap", "ifrs", "tax", "audit", "bookkeeping",
+        "financial", "reconciliation", "ledger", "payroll", "quickbooks",
+    ),
+}
+
+_LEVEL_WEIGHT = {
+    "learning": 0.4,
+    "exposure": 0.65,
+    "hands_on": 0.9,
+    "expert": 1.0,
+}
+
 
 def _tokenize(text: str) -> list[str]:
     text = text.lower()
@@ -109,3 +135,99 @@ def shared_keywords(resume: str, job_description: str, limit: int = 30) -> list[
     out = [(t, r_c[t], j_c[t]) for t in common]
     out.sort(key=lambda x: -(x[1] + x[2]))
     return out[:limit]
+
+
+def profession_correlation(profession: str, resume: str, job_description: str) -> tuple[float, list[str]]:
+    """
+    Score whether the resume+JD align with the selected profession (0-100).
+    Returns (score, matched_profession_terms).
+    """
+    prof = (profession or "").strip().lower()
+    keys = _PROFESSION_KEYWORDS.get(prof, ())
+    if not keys:
+        return 0.0, []
+
+    r = set(_tokenize(resume))
+    j = set(_tokenize(job_description))
+    union = r | j
+    matched = [k for k in keys if k in union]
+    score = (len(matched) / max(1, len(keys))) * 100.0
+    return round(score, 1), matched
+
+
+def classify_match(overall_score: float, profession_score: float) -> tuple[str, str, float]:
+    """
+    Build product-facing decision buckets.
+    Returns (match_level, effort_level, correlated_score).
+    """
+    # Weighted score: JD/resume similarity + profession relevance
+    correlated = (0.7 * overall_score) + (0.3 * profession_score)
+    if correlated >= 75:
+        return "High match", "Low effort", round(correlated, 1)
+    if correlated >= 50:
+        return "Medium match", "Medium effort", round(correlated, 1)
+    return "Low match", "High effort", round(correlated, 1)
+
+
+def parse_skill_growth(raw: str) -> list[tuple[str, str]]:
+    """
+    Parse user-entered skill updates.
+    Input format examples:
+      - "LangChain:learning, AWS:exposure"
+      - "pytorch:hands_on"
+    Returns [(skill, level)].
+    """
+    if not raw.strip():
+        return []
+    out: list[tuple[str, str]] = []
+    chunks = [c.strip() for c in raw.replace("\n", ",").split(",") if c.strip()]
+    for chunk in chunks:
+        if ":" in chunk:
+            skill, level = [x.strip().lower() for x in chunk.split(":", 1)]
+        else:
+            skill, level = chunk.strip().lower(), "learning"
+        if not skill:
+            continue
+        if level not in _LEVEL_WEIGHT:
+            level = "learning"
+        out.append((skill, level))
+    return out
+
+
+def growth_correlation(skill_growth: list[tuple[str, str]], job_description: str) -> tuple[float, list[tuple[str, str]]]:
+    """Score how user-added growth skills align with the JD."""
+    if not skill_growth:
+        return 0.0, []
+    jd_tokens = set(_tokenize(job_description))
+    matched: list[tuple[str, str]] = []
+    total_weight = 0.0
+    hit_weight = 0.0
+    for skill, level in skill_growth:
+        w = _LEVEL_WEIGHT.get(level, 0.4)
+        total_weight += w
+        # Match on tokenized single tokens in skill phrase
+        tokens = skill.replace("-", " ").replace("/", " ").split()
+        if any(t in jd_tokens for t in tokens):
+            hit_weight += w
+            matched.append((skill, level))
+    if total_weight == 0:
+        return 0.0, []
+    return round((hit_weight / total_weight) * 100.0, 1), matched
+
+
+def tailor_suggestions(resume: str, job_description: str, gaps: list[tuple[str, int]]) -> list[str]:
+    """
+    Lightweight truthful tailoring suggestions from JD gaps.
+    """
+    resume_tokens = set(_tokenize(resume))
+    suggestions: list[str] = []
+    for term, _ in gaps[:8]:
+        if term in resume_tokens:
+            continue
+        suggestions.append(
+            f"Add a bullet showing exposure to '{term}' with a concrete project/result."
+        )
+    if not suggestions:
+        suggestions.append("Your resume already covers many job terms. Focus on stronger quantified impact.")
+    suggestions.append("Use action + scope + metric format (e.g., 'Built X, reduced Y by Z%').")
+    return suggestions[:8]
