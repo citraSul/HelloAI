@@ -3,5 +3,7 @@ node_modules
 out
 .env
 .env.local
+prisma/dev.db
+prisma/dev.db-journal
 *.tsbuildinfo
 next-env.d.ts

@@ -1,0 +1,17 @@
+# Local Postgres for hirelens-web (Prisma). Optional if you already have Postgres.
+# Usage: docker compose up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hirelens-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hirelens
+    ports:
+      - "5432:5432"
+    volumes:
+      - hirelens_pgdata:/var/lib/postgresql/data
+
+volumes:
+  hirelens_pgdata:

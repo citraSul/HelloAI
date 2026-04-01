@@ -1,9 +1,12 @@
+// Local dev: SQLite + DATABASE_URL=file:./dev.db (creates prisma/dev.db)
+// Production: switch provider to "postgresql" and use a Postgres DATABASE_URL.
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -26,7 +29,7 @@ model Resume {
   id        String   @id @default(cuid())
   userId    String
   title     String
-  rawText   String   @db.Text
+  rawText   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -51,7 +54,7 @@ model Job {
   userId          String
   title           String
   company         String?
-  rawDescription  String   @db.Text
+  rawDescription  String
   analyzedJson    Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -84,7 +87,7 @@ model TailoredResume {
   userId    String
   resumeId  String
   jobId     String
-  content   String   @db.Text
+  content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

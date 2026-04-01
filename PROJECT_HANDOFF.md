@@ -32,11 +32,13 @@ python app.py          # or: flask run --port 8080
 ```bash
 cd resume-job-matcher/hirelens-web
 cp .env.example .env.local
-# Set DATABASE_URL (Postgres), then:
-npx prisma db push
+# Default uses SQLite (`file:./dev.db` → `prisma/dev.db`) — no Docker Postgres required.
+DATABASE_URL="file:./dev.db" npx prisma db push
 npm install
 npm run dev
 ```
+
+**Database:** The repo defaults Prisma to **SQLite** for easy local runs. For **PostgreSQL** (e.g. Docker `docker compose up -d`), set `provider = "postgresql"` in `prisma/schema.prisma` and use a `postgresql://…` `DATABASE_URL` in `.env.local`.
 
 - To use **real Flask** for match / tailor / impact (not mocks), set **both** in `.env.local`:
 
