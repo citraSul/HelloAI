@@ -7,6 +7,9 @@ import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
 import { Briefcase } from "lucide-react";
 import { ScoreBadge } from "@/components/score-badge";
+import { DecisionListBadge } from "@/components/decision-list-badge";
+import { JobCreateForm } from "@/components/job-create-form";
+import { resolveUserId } from "@/lib/services/user";
 
 const jobListInclude = {
   matchAnalyses: { orderBy: { createdAt: "desc" as const }, take: 1 },
@@ -17,10 +20,12 @@ type JobWithLatest = Prisma.JobGetPayload<{ include: typeof jobListInclude }>;
 export const dynamic = "force-dynamic";
 
 export default async function JobsPage() {
+  const userId = await resolveUserId();
   let jobs: JobWithLatest[] = [];
   let loadError = false;
   try {
     jobs = await prisma.job.findMany({
+      where: { userId },
       orderBy: { updatedAt: "desc" },
       take: 50,
       include: jobListInclude,
@@ -33,6 +38,9 @@ export default async function JobsPage() {
   return (
     <AppShell title="Jobs">
       <PageHeader title="Jobs" description="Roles you track and the latest match signal for each." />
+      <div className="mb-10">
+        <JobCreateForm />
+      </div>
       {loadError ? (
         <EmptyState
           icon={Briefcase}
@@ -59,7 +67,10 @@ export default async function JobsPage() {
                         <p className="mt-1 text-sm text-muted-foreground">{job.company ?? "Company TBD"}</p>
                       </div>
                       {latest ? (
-                        <ScoreBadge score={latest.matchScore} verdict={latest.verdict} />
+                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                          <DecisionListBadge matchScore={latest.matchScore} />
+                          <ScoreBadge score={latest.matchScore} verdict={latest.verdict} />
+                        </div>
                       ) : (
                         <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-label">
                           No score yet

@@ -1,3 +1,6 @@
+export type { NormalizedImpactMetrics } from "@/lib/types/impact-metrics";
+export type { DecisionOutput } from "@/lib/types/decision";
+
 export type MatchVerdict = "strong" | "moderate" | "weak" | "poor";
 
 export interface DashboardOverview {

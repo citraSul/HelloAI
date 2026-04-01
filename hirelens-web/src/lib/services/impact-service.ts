@@ -3,6 +3,7 @@ import { callFlaskEvaluateImpact } from "@/lib/flask/client";
 import { isFlaskPipelineEnabled } from "@/lib/flask/env";
 import { matchLevelLabel } from "@/lib/flask/normalize";
 import { prisma } from "@/lib/db/prisma";
+import { normalizeImpactMetrics } from "@/lib/services/normalize-impact-metrics";
 import { resolveUserId } from "@/lib/services/user";
 
 export async function evaluateImpact(input: { tailoredResumeId: string; userId?: string }) {
@@ -29,7 +30,7 @@ export async function evaluateImpact(input: { tailoredResumeId: string; userId?:
     throw new Error("Related job or resume not found");
   }
 
-  let metrics: Record<string, unknown>;
+  let raw: unknown;
 
   if (isFlaskPipelineEnabled()) {
     const match_result =
@@ -39,15 +40,21 @@ export async function evaluateImpact(input: { tailoredResumeId: string; userId?:
             match_level: matchLevelLabel(analysis.verdict),
           }
         : undefined;
-    metrics = await callFlaskEvaluateImpact({
+    raw = await callFlaskEvaluateImpact({
       job_description: job.rawDescription,
       original_resume: resume.rawText,
       tailored_resume: tailored.content,
       match_result,
     });
   } else {
-    metrics = (await evaluateImpactMock(tailored.content.slice(0, 500))) as Record<string, unknown>;
+    raw = await evaluateImpactMock({
+      originalResume: resume.rawText,
+      tailoredResume: tailored.content,
+      jobDescription: job.rawDescription,
+    });
   }
+
+  const metrics = normalizeImpactMetrics(raw);
 
   const row = await prisma.impactMetric.create({
     data: {

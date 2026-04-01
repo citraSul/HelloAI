@@ -8,8 +8,8 @@ export async function POST(req: Request) {
     const parsed = tailorResumeSchema.safeParse(body);
     if (!parsed.success) return jsonFromZod(parsed.error);
 
-    const tailored = await tailorResume(parsed.data);
-    return jsonOk({ tailored });
+    const result = await tailorResume(parsed.data);
+    return jsonOk(result);
   } catch (e) {
     console.error(e);
     const msg = e instanceof Error ? e.message : "Tailor failed";

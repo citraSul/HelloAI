@@ -3,8 +3,45 @@ import { callFlaskPipeline } from "@/lib/flask/client";
 import { isFlaskPipelineEnabled } from "@/lib/flask/env";
 import { prisma } from "@/lib/db/prisma";
 import { resolveUserId } from "@/lib/services/user";
+import type { TailoredResume } from "@prisma/client";
 
-export async function tailorResume(input: { resumeId: string; jobId: string; userId?: string }) {
+export type TailorChangeEntry = {
+  section: string;
+  summary: string;
+  detail?: string;
+};
+
+export type TailorResultMeta = {
+  jobTitle: string;
+  company: string | null;
+  originalText: string;
+  tailoredText: string;
+  changeLog: TailorChangeEntry[];
+  warnings: string[];
+};
+
+function extractTailoringMeta(raw: unknown): { changeLog: TailorChangeEntry[]; warnings: string[] } {
+  if (!raw || typeof raw !== "object") return { changeLog: [], warnings: [] };
+  const o = raw as Record<string, unknown>;
+  const tailoring = o.tailoring as Record<string, unknown> | undefined;
+  if (!tailoring) return { changeLog: [], warnings: [] };
+  const changes = tailoring.changes as Array<Record<string, unknown>> | undefined;
+  const warnings = tailoring.warnings as string[] | undefined;
+  const changeLog: TailorChangeEntry[] = (changes ?? []).map((c) => ({
+    section: String(c.section ?? "section"),
+    summary: String(c.reason ?? "Change"),
+    detail:
+      c.before || c.after
+        ? `${String(c.before ?? "").slice(0, 200)}${c.before && c.after ? " → " : ""}${String(c.after ?? "").slice(0, 200)}`
+        : undefined,
+  }));
+  return { changeLog, warnings: warnings ?? [] };
+}
+
+export async function tailorResume(input: { resumeId: string; jobId: string; userId?: string }): Promise<{
+  tailored: TailoredResume;
+  meta: TailorResultMeta;
+}> {
   const userId = await resolveUserId(input.userId);
 
   const [resume, job] = await Promise.all([
@@ -37,6 +74,18 @@ export async function tailorResume(input: { resumeId: string; jobId: string; use
     raw = { length: content.length };
   }
 
+  const { changeLog, warnings } = extractTailoringMeta(raw);
+  const syntheticLog: TailorChangeEntry[] =
+    changeLog.length === 0 && content.trim() !== resume.rawText.trim()
+      ? [
+          {
+            section: "document",
+            summary: "Resume adjusted for target role (mock tailoring).",
+            detail: "Compare center column for highlighted edits.",
+          },
+        ]
+      : changeLog;
+
   const tailoredRow = await prisma.tailoredResume.create({
     data: {
       userId,
@@ -56,5 +105,15 @@ export async function tailorResume(input: { resumeId: string; jobId: string; use
     },
   });
 
-  return tailoredRow;
+  return {
+    tailored: tailoredRow,
+    meta: {
+      jobTitle: job.title,
+      company: job.company,
+      originalText: resume.rawText,
+      tailoredText: content,
+      changeLog: syntheticLog,
+      warnings,
+    },
+  };
 }

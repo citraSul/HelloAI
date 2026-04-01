@@ -2,21 +2,34 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/db/prisma";
-import { notFound } from "next/navigation";
+import { loadDecisionForJobDetail } from "@/lib/services/decision-service";
+import { resolveUserId } from "@/lib/services/user";
+import { notFound, redirect } from "next/navigation";
 import { JobMatchHero } from "@/components/job-match-hero";
 import { MatchBreakdownPanels } from "@/components/match-breakdown";
+import { JobDetailNoResumeCta, JobDetailResumePanel } from "@/components/job-detail-resume-panel";
+import { DecisionSummaryCard } from "@/components/decision-summary-card";
 
 export const dynamic = "force-dynamic";
 
-export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function JobDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const sp = await searchParams;
+  const rawResume = sp.resumeId;
+  const resumeIdParam = Array.isArray(rawResume) ? rawResume[0] : rawResume;
+
+  const userId = await resolveUserId();
+
   let job;
   try {
-    job = await prisma.job.findUnique({
-      where: { id },
-      include: {
-        matchAnalyses: { orderBy: { createdAt: "desc" }, include: { resume: true } },
-      },
+    job = await prisma.job.findFirst({
+      where: { id, userId },
     });
   } catch {
     job = null;
@@ -24,9 +37,50 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
   if (!job) notFound();
 
+  const resumes = await prisma.resume.findMany({
+    where: { userId },
+    select: { id: true, title: true },
+    orderBy: { updatedAt: "desc" },
+    take: 50,
+  });
+
+  let effectiveResumeId: string | null = null;
+  let selectedTitle: string | null = null;
+
+  if (resumes.length === 0) {
+    effectiveResumeId = null;
+  } else {
+    const valid = resumeIdParam ? resumes.find((r) => r.id === resumeIdParam) : null;
+    if (valid) {
+      effectiveResumeId = valid.id;
+      selectedTitle = valid.title;
+    } else {
+      redirect(`/jobs/${id}?resumeId=${encodeURIComponent(resumes[0].id)}`);
+    }
+  }
+
+  const decisionCtx = await loadDecisionForJobDetail(userId, id, effectiveResumeId, selectedTitle);
+
+  const matchForResume =
+    effectiveResumeId != null
+      ? await prisma.matchAnalysis.findFirst({
+          where: { userId, jobId: id, resumeId: effectiveResumeId },
+          orderBy: { createdAt: "desc" },
+          include: { resume: true },
+        })
+      : null;
+
+  const matchHistoryForResume =
+    effectiveResumeId != null
+      ? await prisma.matchAnalysis.findMany({
+          where: { userId, jobId: id, resumeId: effectiveResumeId },
+          orderBy: { createdAt: "desc" },
+          include: { resume: true },
+        })
+      : [];
+
   const analyzed = job.analyzedJson as Record<string, unknown> | null;
-  const latest = job.matchAnalyses[0];
-  const breakdown = latest?.breakdown;
+  const breakdown = matchForResume?.breakdown;
 
   return (
     <AppShell title={job.title}>
@@ -35,15 +89,38 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         description={job.company ? `${job.company}` : "Job detail, match signal, and role analysis."}
       />
 
-      {latest ? (
+      <div className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-start">
+        <div className="min-w-0 flex-1">
+          {resumes.length === 0 ? (
+            <JobDetailNoResumeCta />
+          ) : (
+            <JobDetailResumePanel jobId={job.id} resumes={resumes} selectedResumeId={effectiveResumeId!} />
+          )}
+        </div>
+        <div className="w-full shrink-0 lg:w-[360px]">
+          <DecisionSummaryCard
+            decision={decisionCtx.decision}
+            title="Application decision"
+            resumeTitle={selectedTitle}
+          />
+        </div>
+      </div>
+
+      {effectiveResumeId == null ? (
+        <Card className="mb-8">
+          <CardContent className="py-8 text-center text-sm text-muted-foreground">
+            No resume on file. Create one, then run Score match to see a fit signal for this job.
+          </CardContent>
+        </Card>
+      ) : matchForResume ? (
         <div className="mb-8">
-          <JobMatchHero company={job.company} matchScore={latest.matchScore} verdict={latest.verdict} />
+          <JobMatchHero company={job.company} matchScore={matchForResume.matchScore} verdict={matchForResume.verdict} />
         </div>
       ) : (
         <Card className="mb-8">
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            No match score yet. Run <span className="font-medium text-foreground">Score match</span> from Tailor or the
-            API to see your signal here.
+            No match score for <span className="font-medium text-foreground">{selectedTitle}</span> yet. Use{" "}
+            <span className="font-medium text-foreground">Score match</span> above for this resume.
           </CardContent>
         </Card>
       )}
@@ -84,18 +161,23 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       <Card className="mt-6">
         <CardHeader>
           <CardTitle>Match history</CardTitle>
+          {selectedTitle && (
+            <p className="text-xs font-normal text-muted-foreground">For resume: {selectedTitle}</p>
+          )}
         </CardHeader>
         <CardContent>
-          {job.matchAnalyses.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No scores yet.</p>
+          {effectiveResumeId == null ? (
+            <p className="text-sm text-muted-foreground">Add a resume to see history.</p>
+          ) : matchHistoryForResume.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No scores yet for this resume on this job.</p>
           ) : (
             <ul className="space-y-3">
-              {job.matchAnalyses.map((m) => (
+              {matchHistoryForResume.map((m) => (
                 <li
                   key={m.id}
                   className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4 last:border-0 last:pb-0"
                 >
-                  <span className="text-sm text-foreground">Resume: {m.resume.title}</span>
+                  <span className="text-sm text-foreground">{new Date(m.createdAt).toLocaleString()}</span>
                   <span className="tabular-nums text-sm text-muted-foreground">
                     {Math.round(m.matchScore * 100)}% · {m.verdict}
                   </span>

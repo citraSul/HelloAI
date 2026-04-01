@@ -29,16 +29,18 @@ python app.py          # or: flask run --port 8080
 
 ### 2. Next (`hirelens-web`)
 
+**Postgres (local, e.g. pgAdmin / PostgreSQL 17):** host `127.0.0.1`, port `5432`, user `postgres`. Create a database named **`hirelens`**. In `.env.local`, set `DATABASE_URL` (see `hirelens-web/.env.example`) — replace `YOUR_PASSWORD` with your `postgres` user password.
+
 ```bash
 cd resume-job-matcher/hirelens-web
 cp .env.example .env.local
-# Default uses SQLite (`file:./dev.db` → `prisma/dev.db`) — no Docker Postgres required.
-DATABASE_URL="file:./dev.db" npx prisma db push
+# Edit .env.local: set DATABASE_URL with your real password, then:
+npx prisma generate && npx prisma db push
 npm install
 npm run dev
 ```
 
-**Database:** The repo defaults Prisma to **SQLite** for easy local runs. For **PostgreSQL** (e.g. Docker `docker compose up -d`), set `provider = "postgresql"` in `prisma/schema.prisma` and use a `postgresql://…` `DATABASE_URL` in `.env.local`.
+**Database:** Prisma uses **PostgreSQL** (`prisma/schema.prisma`). For a quick SQLite-only dev setup, switch the datasource back to `sqlite` and `file:./dev.db` (not the default anymore).
 
 - To use **real Flask** for match / tailor / impact (not mocks), set **both** in `.env.local`:
 

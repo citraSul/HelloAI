@@ -1,0 +1,381 @@
+import type { NormalizedImpactMetrics } from "@/lib/types/impact-metrics";
+import type { DecisionOutput } from "@/lib/types/decision";
+import { prisma } from "@/lib/db/prisma";
+import { normalizeImpactMetrics } from "@/lib/services/normalize-impact-metrics";
+import { resolveUserId } from "@/lib/services/user";
+
+export type MatchSlice = {
+  id: string;
+  matchScore: number;
+  verdict: string;
+  breakdown: unknown;
+};
+
+const EXCLUDE_BREAKDOWN_KEYS = new Set(["strengths", "gaps", "reasoning", "missing_keywords"]);
+
+/** Match score is stored 0–1 in Prisma; impact fields use 0–100. */
+export function matchPercent(score: number): number {
+  if (Number.isNaN(score)) return 0;
+  return score <= 1 ? score * 100 : Math.min(100, score);
+}
+
+export function analyzeBreakdown(breakdown: unknown): {
+  gapDimCount: number;
+  missingFromBreakdown: string[];
+} {
+  if (!breakdown || typeof breakdown !== "object") {
+    return { gapDimCount: 0, missingFromBreakdown: [] };
+  }
+  const b = breakdown as Record<string, unknown>;
+  let gapDimCount = 0;
+  for (const [k, v] of Object.entries(b)) {
+    if (EXCLUDE_BREAKDOWN_KEYS.has(k)) continue;
+    if (typeof v === "number" && v < 0.65) gapDimCount++;
+  }
+  const missingFromBreakdown = Array.isArray(b.missing_keywords) ? b.missing_keywords.map(String) : [];
+  return { gapDimCount, missingFromBreakdown };
+}
+
+export type BuildDecisionOptions = {
+  /** Makes “no match yet” copy refer to this resume by title. */
+  resumeTitle?: string;
+};
+
+function resumeLabel(options?: BuildDecisionOptions): string {
+  return options?.resumeTitle ? `“${options.resumeTitle}”` : "this resume";
+}
+
+/** When the user has no resumes in the library at all. */
+export function buildEmptyResumeLibraryDecision(): DecisionOutput {
+  return {
+    recommendation: "maybe",
+    confidence: "low",
+    decision_score: null,
+    reasons: ["Create a resume in the library to measure fit against this job."],
+    risks: ["No candidate profile to compare to the posting."],
+    summary:
+      "Add a resume first, then return here to run Score match and get an apply / maybe / skip recommendation for that resume.",
+    provenance: "none",
+  };
+}
+
+/**
+ * Deterministic decision engine: match + optional impact. No invented optimism.
+ */
+export function buildDecision(
+  input: {
+    match: MatchSlice | null;
+    impact: NormalizedImpactMetrics | null;
+  },
+  options?: BuildDecisionOptions,
+): DecisionOutput {
+  const { match, impact } = input;
+  const rl = resumeLabel(options);
+
+  if (!match) {
+    if (impact) {
+      return {
+        recommendation: "maybe",
+        confidence: "low",
+        decision_score: impact.impact_score,
+        reasons: [
+          options?.resumeTitle
+            ? `Impact exists for ${rl}, but there is no match score — run Score match for this resume and job.`
+            : "Impact evaluation exists but no match score on record — run Score match to combine fit with impact.",
+        ],
+        risks: ["Cannot judge overall apply-worthiness without a match analysis."],
+        summary: "Run Score match for this resume and job, then refresh the decision.",
+        provenance: "none",
+      };
+    }
+    return {
+      recommendation: "maybe",
+      confidence: "low",
+      decision_score: null,
+      reasons: [`No match score for ${rl} vs this job — run Score match for this resume.`],
+      risks: ["Fit vs this posting is unknown until you score this resume against the job."],
+      summary: `Run Score match for ${rl} to get an apply / maybe / skip recommendation grounded in fit data.`,
+      provenance: "none",
+    };
+  }
+
+  const mPct = matchPercent(match.matchScore);
+  const { gapDimCount, missingFromBreakdown } = analyzeBreakdown(match.breakdown);
+  const risks: string[] = [];
+  let riskPoints = 0;
+
+  if (mPct < 50) {
+    risks.push("Overall match strength is below a typical apply threshold.");
+    riskPoints += 2;
+  }
+  if (gapDimCount > 2) {
+    risks.push("Several capability dimensions score below target in the match breakdown.");
+    riskPoints += 1;
+  }
+  if (missingFromBreakdown.length > 0) {
+    risks.push(`Match flagged missing keywords: ${missingFromBreakdown.slice(0, 5).join(", ")}.`);
+    riskPoints += 1;
+  }
+
+  if (!impact) {
+    let rec: DecisionOutput["recommendation"] = "maybe";
+    if (mPct >= 72) rec = "apply";
+    else if (mPct < 48) rec = "skip";
+    else if (mPct < 58) rec = "maybe";
+
+    if (riskPoints >= 3 && rec === "apply") rec = "maybe";
+    if (riskPoints >= 5 && rec !== "skip") rec = "skip";
+
+    let conf: DecisionOutput["confidence"] = "medium";
+    if (mPct >= 68 && riskPoints <= 1) conf = "medium";
+    if (mPct < 55 || riskPoints >= 2) conf = "low";
+    if (mPct >= 75 && riskPoints === 0) conf = "medium";
+
+    const reasons: string[] = [
+      `Latest match score ~${Math.round(mPct)}% (${match.verdict})${options?.resumeTitle ? ` for ${rl}` : ""}.`,
+      "Tailored impact has not been evaluated for this resume/job pair — ATS lift and keyword gain are unknown.",
+    ];
+
+    const decision_score = Math.round(Math.min(100, mPct * 0.82));
+
+    if (risks.length === 0) {
+      risks.push("Impact evaluation not run — cannot confirm keyword/ATS improvement from tailoring.");
+    }
+
+    return {
+      recommendation: rec,
+      confidence: conf,
+      decision_score,
+      reasons,
+      risks: risks.slice(0, 6),
+      summary:
+        mPct >= 60
+          ? "Match looks workable on score alone, but confirm with impact evaluation before applying."
+          : "Match is marginal or weak; improve alignment or tailor before investing time, unless you have strong context.",
+      provenance: "match_only",
+    };
+  }
+
+  const is = impact.impact_score ?? 0;
+  const atsAfter = impact.ats_score_after ?? 0;
+  const atsBefore = impact.ats_score_before ?? 0;
+  const atsDelta = atsAfter - atsBefore;
+  const kwGain = impact.keyword_gain ?? 0;
+  const missingCritical = impact.missing_critical_keywords ?? [];
+
+  if (missingCritical.length > 2) {
+    riskPoints += 2;
+    risks.push(
+      `More than two critical JD keywords remain thin after tailoring: ${missingCritical.slice(0, 5).join(", ")}.`,
+    );
+  } else if (missingCritical.length > 0) {
+    riskPoints += 1;
+    risks.push(`Some JD keywords still underrepresented: ${missingCritical.slice(0, 6).join(", ")}.`);
+  }
+
+  if (gapDimCount > 2) {
+    riskPoints += 1;
+  }
+
+  let rec: DecisionOutput["recommendation"] = "maybe";
+  if (mPct >= 75 && is >= 65 && missingCritical.length === 0 && mPct >= 55) {
+    rec = "apply";
+  } else if (mPct < 50) {
+    rec = "skip";
+  } else if (mPct >= 60 && is >= 45) {
+    rec = riskPoints <= 2 && mPct >= 66 ? "apply" : "maybe";
+  } else {
+    rec = mPct >= 62 ? "maybe" : "skip";
+  }
+
+  if (missingCritical.length > 2) {
+    if (rec === "apply") rec = "maybe";
+    else if (rec === "maybe" && riskPoints >= 5) rec = "skip";
+  }
+
+  if (impact.apply_recommendation === "no" && rec === "apply") rec = "maybe";
+  if (impact.apply_recommendation === "yes" && rec === "skip" && mPct >= 58) rec = "maybe";
+
+  let conf: DecisionOutput["confidence"] = "medium";
+  if (mPct >= 72 && is >= 60 && missingCritical.length <= 1 && riskPoints <= 2) conf = "high";
+  if (kwGain >= 3 && atsDelta >= 5 && is >= 55) conf = conf === "medium" ? "high" : conf;
+  if (mPct < 52 || is < 38) conf = "low";
+  if (riskPoints >= 4) conf = conf === "high" ? "medium" : conf === "medium" ? "low" : conf;
+
+  const decision_score = Math.round(
+    Math.min(100, 0.42 * mPct + 0.38 * is + 0.12 * atsAfter + 0.08 * Math.max(0, kwGain * 3)),
+  );
+
+  const reasons: string[] = [
+    `Match ~${Math.round(mPct)}%; impact score ~${Math.round(is)}.`,
+    atsDelta >= 3
+      ? `ATS-style proxy moved ~${atsBefore.toFixed(0)} → ~${atsAfter.toFixed(0)}.`
+      : `ATS-style proxy: ~${atsAfter.toFixed(0)} after tailoring.`,
+    kwGain >= 0.5
+      ? `Keyword coverage gain ~${kwGain >= 0 ? "+" : ""}${kwGain.toFixed(1)} pp vs baseline.`
+      : "Limited keyword coverage lift — compare JD to tailored resume.",
+  ];
+
+  if (impact.notes?.[0]) {
+    reasons.push(impact.notes[0].slice(0, 220));
+  }
+
+  const summary =
+    rec === "apply"
+      ? "Signals support applying, subject to your bar for compensation and role fit."
+      : rec === "maybe"
+        ? "Mixed signals — apply selectively or strengthen weak areas first."
+        : "Weak fit or high risk — skip or rework resume for this posting.";
+
+  return {
+    recommendation: rec,
+    confidence: conf,
+    decision_score: decision_score,
+    reasons: reasons.slice(0, 8),
+    risks: risks.slice(0, 6),
+    summary,
+    provenance: "match_and_impact",
+  };
+}
+
+export type LoadedDecisionContext = {
+  decision: DecisionOutput;
+  matchAnalysisId: string | null;
+  impactMetricId: string | null;
+  tailoredResumeId: string | null;
+};
+
+/** Job Detail: decision for a specific resume, or empty-library state when resumeId is null. */
+export async function loadDecisionForJobDetail(
+  userId: string,
+  jobId: string,
+  resumeId: string | null,
+  resumeTitle?: string | null,
+): Promise<LoadedDecisionContext> {
+  if (!resumeId) {
+    return {
+      decision: buildEmptyResumeLibraryDecision(),
+      matchAnalysisId: null,
+      impactMetricId: null,
+      tailoredResumeId: null,
+    };
+  }
+  return loadDecisionForResumeJob(userId, jobId, resumeId, undefined, resumeTitle ?? undefined);
+}
+
+/** Load match + impact for explicit resume/job (optionally pinned tailored row). */
+export async function loadDecisionForResumeJob(
+  userId: string,
+  jobId: string,
+  resumeId: string,
+  tailoredResumeId?: string | null,
+  resumeTitle?: string,
+): Promise<LoadedDecisionContext> {
+  const latestMatch = await prisma.matchAnalysis.findFirst({
+    where: { userId, jobId, resumeId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const tailored =
+    tailoredResumeId != null
+      ? await prisma.tailoredResume.findFirst({
+          where: { id: tailoredResumeId, userId, jobId, resumeId },
+        })
+      : await prisma.tailoredResume.findFirst({
+          where: { userId, jobId, resumeId },
+          orderBy: { updatedAt: "desc" },
+        });
+
+  let impact: NormalizedImpactMetrics | null = null;
+  let impactMetricId: string | null = null;
+  if (tailored) {
+    const im = await prisma.impactMetric.findFirst({
+      where: { userId, tailoredResumeId: tailored.id },
+      orderBy: { createdAt: "desc" },
+    });
+    if (im) {
+      impact = normalizeImpactMetrics(im.metrics);
+      impactMetricId = im.id;
+    }
+  }
+
+  const opts: BuildDecisionOptions | undefined = resumeTitle ? { resumeTitle } : undefined;
+
+  if (!latestMatch) {
+    return {
+      decision: buildDecision({ match: null, impact }, opts),
+      matchAnalysisId: null,
+      impactMetricId,
+      tailoredResumeId: tailored?.id ?? null,
+    };
+  }
+
+  const matchSlice: MatchSlice = {
+    id: latestMatch.id,
+    matchScore: latestMatch.matchScore,
+    verdict: latestMatch.verdict,
+    breakdown: latestMatch.breakdown,
+  };
+
+  return {
+    decision: buildDecision({ match: matchSlice, impact }, opts),
+    matchAnalysisId: latestMatch.id,
+    impactMetricId,
+    tailoredResumeId: tailored?.id ?? null,
+  };
+}
+
+export async function evaluateAndMaybePersistDecision(input: {
+  jobId: string;
+  resumeId: string;
+  tailoredResumeId?: string | null;
+  persist?: boolean;
+  userId?: string;
+}): Promise<LoadedDecisionContext> {
+  const userId = await resolveUserId(input.userId);
+  const resumeRow = await prisma.resume.findFirst({
+    where: { id: input.resumeId, userId },
+    select: { title: true },
+  });
+  const ctx = await loadDecisionForResumeJob(
+    userId,
+    input.jobId,
+    input.resumeId,
+    input.tailoredResumeId,
+    resumeRow?.title,
+  );
+
+  if (input.persist) {
+    await prisma.decisionAnalysis.create({
+      data: {
+        userId,
+        jobId: input.jobId,
+        resumeId: input.resumeId,
+        tailoredResumeId: ctx.tailoredResumeId,
+        matchAnalysisId: ctx.matchAnalysisId,
+        impactMetricId: ctx.impactMetricId,
+        recommendation: ctx.decision.recommendation,
+        confidence: ctx.decision.confidence,
+        decisionScore: ctx.decision.decision_score,
+        reasons: ctx.decision.reasons as object,
+        risks: ctx.decision.risks as object,
+        summary: ctx.decision.summary,
+        provenance: ctx.decision.provenance,
+      },
+    });
+  }
+
+  return ctx;
+}
+
+/** Compact label for job list from match score only (no DB impact fetch). */
+export function quickDecisionLabelFromMatch(matchScore: number): {
+  label: string;
+  tone: "success" | "warning" | "danger" | "muted";
+} {
+  const p = matchPercent(matchScore);
+  if (p >= 72) return { label: "Favorable", tone: "success" };
+  if (p >= 55) return { label: "Mixed", tone: "warning" };
+  if (p >= 40) return { label: "Weak", tone: "danger" };
+  return { label: "Low fit", tone: "muted" };
+}

@@ -1,5 +1,6 @@
 import { impactEvaluateSchema } from "@/lib/validators/impact";
 import { evaluateImpact } from "@/lib/services/impact-service";
+import { normalizeImpactMetrics } from "@/lib/services/normalize-impact-metrics";
 import { jsonError, jsonFromZod, jsonOk } from "@/lib/api/json";
 
 export async function POST(req: Request) {
@@ -9,7 +10,12 @@ export async function POST(req: Request) {
     if (!parsed.success) return jsonFromZod(parsed.error);
 
     const impact = await evaluateImpact(parsed.data);
-    return jsonOk({ impact });
+    return jsonOk({
+      impact: {
+        ...impact,
+        metrics: normalizeImpactMetrics(impact.metrics),
+      },
+    });
   } catch (e) {
     console.error(e);
     const msg = e instanceof Error ? e.message : "Impact eval failed";

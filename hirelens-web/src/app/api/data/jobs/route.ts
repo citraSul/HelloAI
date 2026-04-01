@@ -14,6 +14,8 @@ export async function GET() {
     const items = rows.map((r) => ({
       id: r.id,
       label: r.company ? `${r.title} — ${r.company}` : r.title,
+      title: r.title,
+      company: r.company,
     }));
     return jsonOk({ items });
   } catch (e) {

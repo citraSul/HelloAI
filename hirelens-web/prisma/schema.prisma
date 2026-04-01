@@ -1,12 +1,11 @@
-// Local dev: SQLite + DATABASE_URL=file:./dev.db (creates prisma/dev.db)
-// Production: switch provider to "postgresql" and use a Postgres DATABASE_URL.
+// PostgreSQL — set DATABASE_URL in .env.local (see .env.example)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -22,6 +21,7 @@ model User {
   matchAnalyses     MatchAnalysis[]
   tailoredResumes   TailoredResume[]
   impactMetrics     ImpactMetric[]
+  decisionAnalyses  DecisionAnalysis[]
   agentRuns         AgentRun[]
 }
 
@@ -29,7 +29,7 @@ model Resume {
   id        String   @id @default(cuid())
   userId    String
   title     String
-  rawText   String
+  rawText   String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -37,6 +37,7 @@ model Resume {
   parsed       ParsedResumeProfile?
   matchAnalyses MatchAnalysis[]
   tailoredResumes TailoredResume[]
+  decisionAnalyses DecisionAnalysis[]
 }
 
 model ParsedResumeProfile {
@@ -54,7 +55,7 @@ model Job {
   userId          String
   title           String
   company         String?
-  rawDescription  String
+  rawDescription  String   @db.Text
   analyzedJson    Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -62,6 +63,7 @@ model Job {
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   matchAnalyses   MatchAnalysis[]
   tailoredResumes TailoredResume[]
+  decisionAnalyses DecisionAnalysis[]
 }
 
 model MatchAnalysis {
@@ -77,6 +79,7 @@ model MatchAnalysis {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
   job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  decisionAnalyses DecisionAnalysis[]
 
   @@index([userId])
   @@index([resumeId, jobId])
@@ -87,7 +90,7 @@ model TailoredResume {
   userId    String
   resumeId  String
   jobId     String
-  content   String
+  content   String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -95,6 +98,7 @@ model TailoredResume {
   resume       Resume         @relation(fields: [resumeId], references: [id], onDelete: Cascade)
   job          Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
   impactMetrics ImpactMetric[]
+  decisionAnalyses DecisionAnalysis[]
 }
 
 model ImpactMetric {
@@ -106,8 +110,37 @@ model ImpactMetric {
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   tailoredResume TailoredResume @relation(fields: [tailoredResumeId], references: [id], onDelete: Cascade)
+  decisionAnalyses DecisionAnalysis[]
 
   @@index([userId])
+}
+
+model DecisionAnalysis {
+  id               String   @id @default(cuid())
+  userId           String
+  jobId            String
+  resumeId         String
+  tailoredResumeId String?
+  matchAnalysisId  String?
+  impactMetricId   String?
+  recommendation   String
+  confidence       String
+  decisionScore    Float?
+  reasons          Json
+  risks            Json
+  summary          String   @db.Text
+  provenance       String
+  createdAt        DateTime @default(now())
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job           Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  resume        Resume         @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  matchAnalysis  MatchAnalysis?  @relation(fields: [matchAnalysisId], references: [id], onDelete: SetNull)
+  impactMetric   ImpactMetric?   @relation(fields: [impactMetricId], references: [id], onDelete: SetNull)
+  tailoredResume TailoredResume? @relation(fields: [tailoredResumeId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([jobId, resumeId])
 }
 
 model AgentRun {

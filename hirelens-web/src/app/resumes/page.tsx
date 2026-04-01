@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db/prisma";
 import type { Prisma } from "@prisma/client";
 import { EmptyState } from "@/components/empty-state";
 import { FileText } from "lucide-react";
+import { ResumeCreateForm } from "@/components/resume-create-form";
+import { resolveUserId } from "@/lib/services/user";
 
 const resumeInclude = { parsed: true } satisfies Prisma.ResumeInclude;
 type ResumeWithParsed = Prisma.ResumeGetPayload<{ include: typeof resumeInclude }>;
@@ -12,10 +14,12 @@ type ResumeWithParsed = Prisma.ResumeGetPayload<{ include: typeof resumeInclude 
 export const dynamic = "force-dynamic";
 
 export default async function ResumesPage() {
+  const userId = await resolveUserId();
   let resumes: ResumeWithParsed[] = [];
   let loadError = false;
   try {
     resumes = await prisma.resume.findMany({
+      where: { userId },
       orderBy: { updatedAt: "desc" },
       take: 50,
       include: resumeInclude,
@@ -27,6 +31,9 @@ export default async function ResumesPage() {
   return (
     <AppShell title="Resumes">
       <PageHeader title="Resume library" description="Uploaded resumes and parsed profile snapshots." />
+      <div className="mb-10">
+        <ResumeCreateForm />
+      </div>
       {loadError ? (
         <EmptyState
           icon={FileText}

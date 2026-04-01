@@ -4,18 +4,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/db/prisma";
 import { AnalyticsBarChart } from "@/components/analytics-bar-chart";
 import { ImpactBadge } from "@/components/score-badge";
+import { resolveUserId } from "@/lib/services/user";
 
 export const dynamic = "force-dynamic";
 
 export default async function AnalyticsPage() {
+  const userId = await resolveUserId();
   let metricsCount = 0;
   let runsByAgent: { agentName: string; count: number }[] = [];
   let loadError = false;
 
   try {
-    metricsCount = await prisma.impactMetric.count();
+    metricsCount = await prisma.impactMetric.count({ where: { userId } });
     const grouped = await prisma.agentRun.groupBy({
       by: ["agentName"],
+      where: { userId },
       _count: { id: true },
     });
     runsByAgent = grouped.map((g) => ({ agentName: g.agentName, count: g._count.id }));
@@ -43,7 +46,7 @@ export default async function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-4xl font-bold tabular-nums text-foreground">{metricsCount}</p>
-              <p className="mt-2 text-sm text-muted-foreground">Total impact metric records</p>
+              <p className="mt-2 text-sm text-muted-foreground">Impact metric records for your account</p>
             </CardContent>
           </Card>
           <Card>
