@@ -22,6 +22,8 @@
       <h1>Application Dashboard</h1>
       <div style="display:flex; align-items:center; gap:0.6rem;">
         <a href="{{ url_for('index') }}">+ New analysis</a>
+        <a href="{{ url_for('jobs_feed') }}">Job feed</a>
+        <a href="{{ url_for('profile') }}">Profile</a>
         <a href="{{ url_for('pricing') }}">Pricing</a>
         <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />

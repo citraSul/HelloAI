@@ -2,3 +2,13 @@
 __pycache__/
 *.pyc
 .DS_Store
+.env
+.env.local
+
+# hirelens-web (Next.js)
+hirelens-web/node_modules/
+hirelens-web/.next/
+hirelens-web/out/
+hirelens-web/.env
+hirelens-web/.env.local
+hirelens-web/.env.*.local

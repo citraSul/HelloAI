@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  resumes           Resume[]
+  jobs              Job[]
+  matchAnalyses     MatchAnalysis[]
+  tailoredResumes   TailoredResume[]
+  impactMetrics     ImpactMetric[]
+  agentRuns         AgentRun[]
+}
+
+model Resume {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  rawText   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parsed       ParsedResumeProfile?
+  matchAnalyses MatchAnalysis[]
+  tailoredResumes TailoredResume[]
+}
+
+model ParsedResumeProfile {
+  id        String   @id @default(cuid())
+  resumeId  String   @unique
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+}
+
+model Job {
+  id              String   @id @default(cuid())
+  userId          String
+  title           String
+  company         String?
+  rawDescription  String   @db.Text
+  analyzedJson    Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchAnalyses   MatchAnalysis[]
+  tailoredResumes TailoredResume[]
+}
+
+model MatchAnalysis {
+  id         String   @id @default(cuid())
+  userId     String
+  resumeId   String
+  jobId      String
+  matchScore Float
+  verdict    String
+  breakdown  Json?
+  createdAt  DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([resumeId, jobId])
+}
+
+model TailoredResume {
+  id        String   @id @default(cuid())
+  userId    String
+  resumeId  String
+  jobId     String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume       Resume         @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  job          Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  impactMetrics ImpactMetric[]
+}
+
+model ImpactMetric {
+  id                String   @id @default(cuid())
+  userId            String
+  tailoredResumeId  String
+  metrics           Json
+  createdAt         DateTime @default(now())
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tailoredResume TailoredResume @relation(fields: [tailoredResumeId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AgentRun {
+  id        String   @id @default(cuid())
+  userId    String
+  agentName String
+  inputJson Json
+  outputJson Json?
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([agentName])
+}

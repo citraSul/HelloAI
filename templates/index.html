@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="csrf-token" content="{{ csrf_token }}" />
-  <title>Resume ↔ Job match</title>
+  <title>{{ brand_name }}</title>
   <style>
     :root {
       color-scheme: light;
@@ -184,9 +184,12 @@
   <main class="container">
     <section class="card">
       <div class="topbar">
-        <h1>Resume ↔ job description matcher</h1>
+        <h1>{{ brand_name }}</h1>
+        <p class="muted" style="margin:0.25rem 0 0;font-size:0.95rem;">{{ brand_tagline }}</p>
         <div style="display:flex; gap:0.5rem; align-items:center;">
           {% if is_authenticated %}
+          <a class="btn-secondary" href="{{ url_for('jobs_feed') }}">Job feed</a>
+          <a class="btn-secondary" href="{{ url_for('profile') }}">Profile</a>
           <a class="btn-secondary" href="{{ url_for('dashboard') }}">Dashboard</a>
           <form method="post" action="{{ url_for('logout') }}" style="margin:0;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -199,9 +202,9 @@
           <button id="theme-toggle" class="theme-btn" type="button">Toggle dark mode</button>
         </div>
       </div>
-      <p class="muted">Get a quick fit score and keyword guidance in seconds. Text is processed for this request and not persisted by app logic.</p>
+      <p class="muted">Get a quick fit score and keyword guidance. Manual analyses are saved to your account. For a scored list of new CS/dev listings, save a profile resume and open <strong>Job feed</strong> (public APIs — not LinkedIn automation).</p>
       <div class="warn">
-        Paste job description from LinkedIn manually (no auto-apply automation). The app will include profession correlation in your result.
+        Paste any job description (e.g. from LinkedIn) yourself — we do not log into LinkedIn. For recurring listings, use <a href="{{ url_for('profile') }}">Profile</a> + automated <code>/api/cron/fetch-feed</code> (Remote OK tech jobs).
       </div>
       <form method="post" action="{{ url_for('analyze') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />

@@ -1,0 +1,36 @@
+import { parseResumeMock } from "@/lib/agents";
+import { prisma } from "@/lib/db/prisma";
+import { resolveUserId } from "@/lib/services/user";
+
+export async function uploadResume(input: {
+  title: string;
+  rawText: string;
+  userId?: string;
+}) {
+  const userId = await resolveUserId(input.userId);
+  const parsed = await parseResumeMock(input.rawText);
+
+  const resume = await prisma.resume.create({
+    data: {
+      userId,
+      title: input.title,
+      rawText: input.rawText,
+      parsed: {
+        create: { data: parsed as object },
+      },
+    },
+    include: { parsed: true },
+  });
+
+  await prisma.agentRun.create({
+    data: {
+      userId,
+      agentName: "resume_parser",
+      inputJson: { title: input.title, length: input.rawText.length },
+      outputJson: parsed as object,
+      status: "ok",
+    },
+  });
+
+  return resume;
+}

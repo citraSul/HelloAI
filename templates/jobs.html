@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>CS / dev job feed — scored for you</title>
+  <style>
+    body { margin: 0; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f7fb; color: #0f172a; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #dbe3ef; border-radius: 12px; overflow: hidden; }
+    th, td { text-align: left; padding: 0.65rem; border-bottom: 1px solid #e8edf5; font-size: 0.88rem; vertical-align: top; }
+    th { background: #f8fbff; color: #334155; }
+    .badge { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+    .hi { background: #dcfce7; color: #166534; }
+    .med { background: #fef9c3; color: #854d0e; }
+    .low { background: #fee2e2; color: #991b1b; }
+    a { color: #2563eb; text-decoration: none; word-break: break-all; }
+    .callout { background: #eff6ff; border: 1px solid #bfdbfe; padding: 0.75rem 1rem; border-radius: 10px; font-size: 0.88rem; color: #1e3a5f; margin-bottom: 1.25rem; }
+    .muted { color: #64748b; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <div class="top">
+      <div>
+        <h1 style="margin:0 0 0.35rem;">Programming &amp; CS job feed</h1>
+        <p class="muted" style="margin:0;">Ranked by match to <strong>your saved profile resume</strong>. Source listings are public tech APIs (not LinkedIn).</p>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:0.4rem; align-items:flex-end;">
+        <a href="{{ url_for('profile') }}">Edit profile resume</a>
+        <a href="{{ url_for('dashboard') }}">Manual analyses</a>
+        <a href="{{ url_for('index') }}">Home</a>
+      </div>
+    </div>
+    <div class="callout">
+      <strong>Why not LinkedIn?</strong> Automated pulls from LinkedIn violate their rules. This feed uses <strong>Remote OK</strong> (and similar APIs you can add later), filtered toward software / CS roles. Trigger updates with a cron call every 30 minutes (see <code>.env.example</code>).
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Match</th>
+          <th>Effort</th>
+          <th>Score</th>
+          <th>Role</th>
+          <th>Company</th>
+          <th>Link</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>
+            {% set ml = row["match_level"] %}
+            <span class="badge {% if 'High' in ml %}hi{% elif 'Medium' in ml %}med{% else %}low{% endif %}">{{ ml }}</span>
+          </td>
+          <td>{{ row["effort_level"] }}</td>
+          <td>{{ "%.1f"|format(row["correlated_score"]) }}</td>
+          <td>{{ row["title"] }}</td>
+          <td>{{ row["company"] }}</td>
+          <td><a href="{{ row['url'] }}" target="_blank" rel="noopener">Open</a> <span class="muted">({{ row["source"] }})</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6">No feed matches yet. Save your resume under <a href="{{ url_for('profile') }}">Profile</a>, then run the feed job (cron) or wait for the scheduler.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

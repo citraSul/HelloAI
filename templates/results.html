@@ -309,6 +309,60 @@
           {% endfor %}
         </ul>
       </div>
+
+      {% if impact %}
+      <div class="panel" style="margin-top: 1rem;">
+        <h3>Resume impact evaluation</h3>
+        <p class="muted" style="margin-top:0;">Rule-based metrics on your text only — not a vendor ATS. Compare before vs after tailoring below.</p>
+        <div class="kpi-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+          <div class="kpi">
+            <div class="label">ATS proxy (before → after)</div>
+            <div class="value">{{ impact.ats_score_before }} → {{ impact.ats_score_after }}</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Keyword gain (pp)</div>
+            <div class="value">{{ impact.keyword_gain }}</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Relevance boost</div>
+            <div class="value">{{ impact.relevance_boost }}</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Clarity</div>
+            <div class="value">{{ impact.clarity_score }}</div>
+          </div>
+        </div>
+        <div class="kpi-grid" style="margin-top:0.5rem; grid-template-columns: repeat(4, minmax(0, 1fr));">
+          <div class="kpi">
+            <div class="label">Impact score</div>
+            <div class="value">{{ impact.impact_score }}</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Apply hint</div>
+            <div class="value" style="font-size:0.95rem;">{{ impact.apply_recommendation }}</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Confidence</div>
+            <div class="value">{{ impact.confidence }}</div>
+          </div>
+          <div class="kpi">
+            <div class="label">ATS / recruiter proxy</div>
+            <div class="value" style="font-size:0.85rem;">{{ impact.ats_pass_estimate }} / {{ impact.recruiter_interest_estimate }}</div>
+          </div>
+        </div>
+        {% if impact.missing_critical_keywords %}
+        <p class="muted" style="margin:0.6rem 0 0;"><strong>Still thin on:</strong> {{ impact.missing_critical_keywords | join(", ") }}</p>
+        {% endif %}
+        {% if impact.weak_sections %}
+        <p class="muted" style="margin:0.35rem 0 0;"><strong>Section signals:</strong> {{ impact.weak_sections | join(", ") }}</p>
+        {% endif %}
+        <ul class="muted" style="margin:0.75rem 0 0; font-size:0.86rem;">
+          {% for line in impact.notes %}
+          <li style="margin:0.2rem 0;">{{ line }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
       <div class="panel" style="margin-top: 1rem;">
         <h3>Application pipeline status</h3>
         <div class="status-inline">
@@ -357,10 +411,16 @@
         </div>
         <div class="row">
           <div>
-            <label for="resume">Resume</label>
-            <textarea id="resume" name="resume">{{ resume }}</textarea>
+            <label for="impact_original_resume">Before tailoring (optional)</label>
+            <textarea id="impact_original_resume" name="impact_original_resume" placeholder="Paste your previous resume version here to measure keyword/relevance gain vs the tailored resume on the right. Leave empty to score current text only."></textarea>
           </div>
           <div>
+            <label for="resume">Tailored resume (current)</label>
+            <textarea id="resume" name="resume">{{ resume }}</textarea>
+          </div>
+        </div>
+        <div class="row">
+          <div style="grid-column: 1 / -1;">
             <label for="jd">Job description</label>
             <textarea id="jd" name="jd">{{ jd }}</textarea>
           </div>

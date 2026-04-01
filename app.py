@@ -12,6 +12,10 @@ from functools import wraps
 from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from brand import BRAND_NAME, TAGLINE
+from impact_eval import evaluate_resume_impact
+from job_feed import fetch_remoteok_cs_jobs
+from pipeline import run_pipeline
 from matcher import (
     classify_match,
     growth_correlation,
@@ -28,7 +32,13 @@ app.config["MAX_CONTENT_LENGTH"] = 512 * 1024
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-only-change-me")
 DB_PATH = os.environ.get("APP_DB_PATH", "app.db")
 
-CSRF_EXEMPT_PATHS = {"/api/stripe/webhook", "/api/alerts/intake"}
+CSRF_EXEMPT_PATHS = {
+    "/api/stripe/webhook",
+    "/api/alerts/intake",
+    "/api/cron/fetch-feed",
+    "/api/internal/v2/pipeline",
+    "/api/internal/evaluate-impact",
+}
 
 
 def _db() -> sqlite3.Connection:
@@ -105,6 +115,32 @@ def init_db() -> None:
             )
             """
         )
+        ucols = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "default_resume" not in ucols:
+            conn.execute("ALTER TABLE users ADD COLUMN default_resume TEXT")
+        if "default_profession" not in ucols:
+            conn.execute("ALTER TABLE users ADD COLUMN default_profession TEXT DEFAULT ''")
+        if "default_skill_growth" not in ucols:
+            conn.execute("ALTER TABLE users ADD COLUMN default_skill_growth TEXT DEFAULT ''")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feed_match_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                alert_job_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                score REAL NOT NULL,
+                profession_score REAL NOT NULL,
+                growth_score REAL NOT NULL,
+                correlated_score REAL NOT NULL,
+                match_level TEXT NOT NULL,
+                effort_level TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(alert_job_id) REFERENCES alert_jobs(id),
+                UNIQUE(user_id, alert_job_id)
+            )
+            """
+        )
 
 
 def current_user_id() -> int | None:
@@ -123,6 +159,25 @@ def login_required(fn):
     def wrapped(*args, **kwargs):
         if not current_user_id():
             return redirect(url_for("login"))
+        return fn(*args, **kwargs)
+
+    return wrapped
+
+
+def internal_api_key_required(fn):
+    """Machine-to-machine auth for Next.js / hirelens-web (set HIRELENS_INTERNAL_API_KEY)."""
+
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        expected = (os.environ.get("HIRELENS_INTERNAL_API_KEY") or "").strip()
+        if not expected:
+            return jsonify({"ok": False, "message": "HIRELENS_INTERNAL_API_KEY not set on server"}), 503
+        token = (request.headers.get("X-API-Key") or "").strip()
+        auth = request.headers.get("Authorization") or ""
+        if auth.startswith("Bearer "):
+            token = auth[7:].strip()
+        if not token or not secrets.compare_digest(token, expected):
+            return jsonify({"ok": False, "message": "Unauthorized"}), 401
         return fn(*args, **kwargs)
 
     return wrapped
@@ -159,6 +214,8 @@ def inject_common():
         "auth_user_email": current_user_email(),
         "is_authenticated": current_user_id() is not None,
         "config_support_email": os.environ.get("SUPPORT_EMAIL", "support@example.com"),
+        "brand_name": BRAND_NAME,
+        "brand_tagline": TAGLINE,
     }
 
 
@@ -263,6 +320,109 @@ def refund() -> str:
     return render_template("refund.html")
 
 
+@app.route("/api/evaluate-impact", methods=["POST"])
+@login_required
+def api_evaluate_impact():
+    """
+    JSON body:
+      match_result (optional dict): e.g. { "correlated_score": 72.1, "match_level": "High match" }
+      original_resume, tailored_resume, job_description (strings)
+    Returns deterministic impact metrics (see impact_eval.evaluate_resume_impact).
+    """
+    data = request.get_json(silent=True) or {}
+    match_result = data.get("match_result")
+    if match_result is not None and not isinstance(match_result, dict):
+        return jsonify({"ok": False, "message": "match_result must be an object or omitted"}), 400
+    original_resume = str(data.get("original_resume") or "")
+    tailored_resume = str(data.get("tailored_resume") or "")
+    job_description = str(data.get("job_description") or "")
+    if not job_description.strip():
+        return jsonify({"ok": False, "message": "job_description is required"}), 400
+    if not original_resume.strip() and not tailored_resume.strip():
+        return jsonify({"ok": False, "message": "Provide original_resume and/or tailored_resume"}), 400
+    if not tailored_resume.strip():
+        tailored_resume = original_resume
+    if not original_resume.strip():
+        original_resume = tailored_resume
+    out = evaluate_resume_impact(
+        match_result=match_result,
+        original_resume=original_resume,
+        tailored_resume=tailored_resume,
+        job_description=job_description,
+    )
+    return jsonify({"ok": True, **out})
+
+
+@app.route("/api/v2/pipeline", methods=["POST"])
+@login_required
+def api_pipeline_v2():
+    """
+    HireLens full structured pipeline (US-ready, explainable JSON).
+    Body JSON: { "job_description", "resume", "include_tailoring": false, "include_impact": true }
+    """
+    data = request.get_json(silent=True) or {}
+    jd = str(data.get("job_description") or "")
+    resume = str(data.get("resume") or "")
+    if not jd.strip() or not resume.strip():
+        return jsonify({"ok": False, "message": "job_description and resume are required"}), 400
+    tailor = bool(data.get("include_tailoring", False))
+    impact = bool(data.get("include_impact", True))
+    try:
+        out = run_pipeline(jd, resume, include_tailoring=tailor, include_impact=impact)
+    except Exception as exc:  # pragma: no cover
+        return jsonify({"ok": False, "message": str(exc)}), 500
+    return jsonify({"ok": True, **out})
+
+
+@app.route("/api/internal/v2/pipeline", methods=["POST"])
+@internal_api_key_required
+def api_internal_pipeline_v2():
+    """
+    Same as /api/v2/pipeline but API-key auth (no browser session).
+    Header: X-API-Key: <HIRELENS_INTERNAL_API_KEY> or Authorization: Bearer <key>
+    """
+    data = request.get_json(silent=True) or {}
+    jd = str(data.get("job_description") or "")
+    resume = str(data.get("resume") or "")
+    if not jd.strip() or not resume.strip():
+        return jsonify({"ok": False, "message": "job_description and resume are required"}), 400
+    tailor = bool(data.get("include_tailoring", False))
+    impact = bool(data.get("include_impact", True))
+    try:
+        out = run_pipeline(jd, resume, include_tailoring=tailor, include_impact=impact)
+    except Exception as exc:  # pragma: no cover
+        return jsonify({"ok": False, "message": str(exc)}), 500
+    return jsonify({"ok": True, **out})
+
+
+@app.route("/api/internal/evaluate-impact", methods=["POST"])
+@internal_api_key_required
+def api_internal_evaluate_impact():
+    """Same as /api/evaluate-impact but API-key auth (no session)."""
+    data = request.get_json(silent=True) or {}
+    match_result = data.get("match_result")
+    if match_result is not None and not isinstance(match_result, dict):
+        return jsonify({"ok": False, "message": "match_result must be an object or omitted"}), 400
+    original_resume = str(data.get("original_resume") or "")
+    tailored_resume = str(data.get("tailored_resume") or "")
+    job_description = str(data.get("job_description") or "")
+    if not job_description.strip():
+        return jsonify({"ok": False, "message": "job_description is required"}), 400
+    if not original_resume.strip() and not tailored_resume.strip():
+        return jsonify({"ok": False, "message": "Provide original_resume and/or tailored_resume"}), 400
+    if not tailored_resume.strip():
+        tailored_resume = original_resume
+    if not original_resume.strip():
+        original_resume = tailored_resume
+    out = evaluate_resume_impact(
+        match_result=match_result,
+        original_resume=original_resume,
+        tailored_resume=tailored_resume,
+        job_description=job_description,
+    )
+    return jsonify({"ok": True, **out})
+
+
 @app.route("/api/create-checkout-session", methods=["POST"])
 @login_required
 def create_checkout_session():
@@ -365,6 +525,194 @@ def alert_intake():
     return jsonify({"ok": True, "message": "Alert job ingested"})
 
 
+def _compute_match_bundle(
+    resume: str,
+    jd: str,
+    profession: str,
+    skill_growth_raw: str,
+) -> tuple[float, float, float, str, str, float]:
+    skill_growth = parse_skill_growth(skill_growth_raw)
+    score = overall_match_score(resume, jd)
+    profession_score, _ = profession_correlation(profession, resume, jd)
+    growth_score, _ = growth_correlation(skill_growth, jd)
+    merged_prof_score = min(100.0, (profession_score * 0.8) + (growth_score * 0.2))
+    match_level, effort_level, correlated_score = classify_match(score, merged_prof_score)
+    return score, profession_score, growth_score, match_level, effort_level, correlated_score
+
+
+def run_job_feed_pipeline() -> dict[str, object]:
+    """
+    Pull public CS/dev jobs (Remote OK), store, score vs each user profile resume.
+    Does not use LinkedIn — see job_feed.py.
+    """
+    listings = fetch_remoteok_cs_jobs()
+    new_job_ids: list[int] = []
+    now = datetime.now(UTC).isoformat()
+    with _db() as conn:
+        for item in listings:
+            url = item["url"]
+            existing = conn.execute("SELECT id FROM alert_jobs WHERE url=?", (url,)).fetchone()
+            if existing:
+                continue
+            cur = conn.execute(
+                """
+                INSERT INTO alert_jobs(created_at, source, title, company, description, url, processed)
+                VALUES (?, ?, ?, ?, ?, ?, 0)
+                """,
+                (
+                    now,
+                    item["source"],
+                    item["title"],
+                    item["company"],
+                    item["description"],
+                    url,
+                ),
+            )
+            new_job_ids.append(int(cur.lastrowid))
+
+        users = conn.execute(
+            """
+            SELECT id, default_resume, default_profession, default_skill_growth
+            FROM users
+            WHERE default_resume IS NOT NULL AND length(trim(default_resume)) >= 80
+            """
+        ).fetchall()
+
+        matched = 0
+        if not new_job_ids or not users:
+            return {
+                "ok": True,
+                "source": "remoteok",
+                "new_listings": len(new_job_ids),
+                "users_with_profile": len(users),
+                "pairings_written": matched,
+                "note": None
+                if new_job_ids
+                else "No new jobs this run (or fetch empty).",
+            }
+
+        for jid in new_job_ids:
+            job = conn.execute(
+                "SELECT id, title, company, description FROM alert_jobs WHERE id=?",
+                (jid,),
+            ).fetchone()
+            if not job:
+                continue
+            jd = str(job["description"])
+            for u in users:
+                uid = int(u["id"])
+                resume = str(u["default_resume"] or "")
+                prof = (u["default_profession"] or "").strip().lower()
+                sg = str(u["default_skill_growth"] or "")
+                score, ps, gs, ml, el, cs = _compute_match_bundle(resume, jd, prof, sg)
+                conn.execute(
+                    """
+                    INSERT INTO feed_match_results(
+                        user_id, alert_job_id, created_at,
+                        score, profession_score, growth_score, correlated_score,
+                        match_level, effort_level
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(user_id, alert_job_id) DO UPDATE SET
+                        created_at=excluded.created_at,
+                        score=excluded.score,
+                        profession_score=excluded.profession_score,
+                        growth_score=excluded.growth_score,
+                        correlated_score=excluded.correlated_score,
+                        match_level=excluded.match_level,
+                        effort_level=excluded.effort_level
+                    """,
+                    (uid, jid, now, score, ps, gs, cs, ml, el),
+                )
+                matched += 1
+
+        return {
+            "ok": True,
+            "source": "remoteok",
+            "new_listings": len(new_job_ids),
+            "users_with_profile": len(users),
+            "pairings_written": matched,
+        }
+
+
+@app.route("/api/cron/fetch-feed", methods=["POST"])
+def cron_fetch_feed():
+    """Call every 30 min from Render Cron / system cron. Header: X-Cron-Secret or Authorization: Bearer."""
+    secret = (os.environ.get("CRON_SECRET") or "").strip()
+    if not secret:
+        return jsonify({"ok": False, "message": "Set CRON_SECRET in environment"}), 503
+    hdr = (request.headers.get("X-Cron-Secret") or "").strip()
+    auth = (request.headers.get("Authorization") or "").strip()
+    if hdr != secret and auth != f"Bearer {secret}":
+        abort(401)
+    result = run_job_feed_pipeline()
+    return jsonify(result)
+
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile() -> str:
+    uid = current_user_id()
+    assert uid is not None
+    error = ""
+    if request.method == "POST":
+        resume = request.form.get("default_resume") or ""
+        profession = (request.form.get("default_profession") or "").strip().lower()
+        skill_growth = request.form.get("default_skill_growth") or ""
+        if len(resume.strip()) < 80:
+            error = "Paste a full enough resume (at least ~80 characters) so the feed can score new jobs."
+        else:
+            with _db() as conn:
+                conn.execute(
+                    """
+                    UPDATE users SET default_resume=?, default_profession=?, default_skill_growth=?
+                    WHERE id=?
+                    """,
+                    (resume.strip(), profession, skill_growth.strip(), uid),
+                )
+            return redirect(url_for("jobs_feed"))
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT default_resume, default_profession, default_skill_growth FROM users WHERE id=?",
+            (uid,),
+        ).fetchone()
+    return render_template(
+        "profile.html",
+        error=error,
+        default_resume=(row["default_resume"] if row else "") or "",
+        default_profession=(row["default_profession"] if row else "") or "",
+        default_skill_growth=(row["default_skill_growth"] if row else "") or "",
+    )
+
+
+@app.route("/jobs")
+@login_required
+def jobs_feed() -> str:
+    uid = current_user_id()
+    assert uid is not None
+    with _db() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+              f.id AS fid,
+              f.correlated_score,
+              f.match_level,
+              f.effort_level,
+              f.created_at AS matched_at,
+              a.title,
+              a.company,
+              a.url,
+              a.source
+            FROM feed_match_results f
+            JOIN alert_jobs a ON a.id = f.alert_job_id
+            WHERE f.user_id=?
+            ORDER BY f.correlated_score DESC, f.id DESC
+            LIMIT 200
+            """,
+            (uid,),
+        ).fetchall()
+    return render_template("jobs.html", rows=rows)
+
+
 @app.route("/api/analyses/<int:analysis_id>/status", methods=["POST"])
 @login_required
 def update_analysis_status(analysis_id: int):
@@ -413,6 +761,7 @@ def analyze() -> str:
             growth_matches=[],
             tailor_actions=[],
             analysis_id=0,
+            impact=None,
         )
 
     score = overall_match_score(resume, jd)
@@ -449,6 +798,15 @@ def analyze() -> str:
         )
         analysis_id = cur.lastrowid
 
+    orig_for_impact = (request.form.get("impact_original_resume") or "").strip()
+    impact_original = orig_for_impact if orig_for_impact else resume
+    impact = evaluate_resume_impact(
+        match_result={"correlated_score": correlated_score, "match_level": match_level},
+        original_resume=impact_original,
+        tailored_resume=resume,
+        job_description=jd,
+    )
+
     return render_template(
         "results.html",
         error=None,
@@ -469,6 +827,7 @@ def analyze() -> str:
         skill_growth=skill_growth_raw,
         tailor_actions=tailor_actions,
         analysis_id=analysis_id,
+        impact=impact,
     )
 
 
@@ -477,6 +836,30 @@ def main() -> None:
     debug = os.environ.get("FLASK_DEBUG") == "1"
     app.run(host="0.0.0.0", port=port, debug=debug)
 
+
+def _maybe_start_job_feed_scheduler() -> None:
+    """Run fetch every N minutes in-process (single-worker Gunicorn only). Prefer external cron + POST /api/cron/fetch-feed for multi-worker."""
+    if os.environ.get("ENABLE_JOB_FEED_SCHEDULER") != "1":
+        return
+    import threading
+    import time
+
+    def _loop() -> None:
+        minutes = int(os.environ.get("JOB_FEED_INTERVAL_MINUTES", "30"))
+        interval = max(5, minutes) * 60
+        time.sleep(15)
+        while True:
+            try:
+                with app.app_context():
+                    run_job_feed_pipeline()
+            except Exception:
+                pass
+            time.sleep(interval)
+
+    threading.Thread(target=_loop, daemon=True, name="job-feed-scheduler").start()
+
+
+_maybe_start_job_feed_scheduler()
 
 if __name__ == "__main__":
     main()
