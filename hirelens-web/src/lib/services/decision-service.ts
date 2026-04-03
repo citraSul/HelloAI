@@ -1,6 +1,7 @@
 import type { NormalizedImpactMetrics } from "@/lib/types/impact-metrics";
 import type { DecisionOutput } from "@/lib/types/decision";
 import { prisma } from "@/lib/db/prisma";
+import { getPrismaUserMessage, isMissingTableError } from "@/lib/db/prisma-errors";
 import { normalizeImpactMetrics } from "@/lib/services/normalize-impact-metrics";
 import { resolveUserId } from "@/lib/services/user";
 
@@ -43,6 +44,42 @@ export type BuildDecisionOptions = {
 
 function resumeLabel(options?: BuildDecisionOptions): string {
   return options?.resumeTitle ? `“${options.resumeTitle}”` : "this resume";
+}
+
+type DecisionEvidence = {
+  strengths: string[];
+  gaps: string[];
+  missingKeywords: string[];
+  dimensionScores: Array<{ key: string; value: number }>;
+};
+
+function asEvidence(breakdown: unknown): DecisionEvidence {
+  if (!breakdown || typeof breakdown !== "object") {
+    return { strengths: [], gaps: [], missingKeywords: [], dimensionScores: [] };
+  }
+  const b = breakdown as Record<string, unknown>;
+  const strengths = Array.isArray(b.strengths) ? b.strengths.map(String) : [];
+  const gaps = Array.isArray(b.gaps) ? b.gaps.map(String) : [];
+  const missingKeywords = Array.isArray(b.missing_keywords) ? b.missing_keywords.map(String) : [];
+  const dimensionScores = Object.entries(b)
+    .filter(([k, v]) => !EXCLUDE_BREAKDOWN_KEYS.has(k) && typeof v === "number")
+    .map(([key, value]) => ({ key, value: Number(value) }));
+  return { strengths, gaps, missingKeywords, dimensionScores };
+}
+
+function topDimension(
+  dims: Array<{ key: string; value: number }>,
+  mode: "high" | "low",
+): { key: string; value: number } | null {
+  if (dims.length === 0) return null;
+  const sorted = [...dims].sort((a, b) => (mode === "high" ? b.value - a.value : a.value - b.value));
+  return sorted[0] ?? null;
+}
+
+function confidenceMeaning(conf: DecisionOutput["confidence"]): string {
+  if (conf === "high") return "Evidence suggests you are likely competitive for this role with this resume.";
+  if (conf === "medium") return "This may be worth applying to, but there are notable tradeoffs to weigh first.";
+  return "Current evidence is weak for this resume-job pairing and applying may have low return.";
 }
 
 /** When the user has no resumes in the library at all. */
@@ -101,6 +138,7 @@ export function buildDecision(
 
   const mPct = matchPercent(match.matchScore);
   const { gapDimCount, missingFromBreakdown } = analyzeBreakdown(match.breakdown);
+  const ev = asEvidence(match.breakdown);
   const risks: string[] = [];
   let riskPoints = 0;
 
@@ -131,16 +169,52 @@ export function buildDecision(
     if (mPct < 55 || riskPoints >= 2) conf = "low";
     if (mPct >= 75 && riskPoints === 0) conf = "medium";
 
-    const reasons: string[] = [
-      `Latest match score ~${Math.round(mPct)}% (${match.verdict})${options?.resumeTitle ? ` for ${rl}` : ""}.`,
-      "Tailored impact has not been evaluated for this resume/job pair — ATS lift and keyword gain are unknown.",
-    ];
+    const reasons: string[] = [];
+    const strongestDim = topDimension(ev.dimensionScores, "high");
+    const weakestDim = topDimension(ev.dimensionScores, "low");
+
+    reasons.push(
+      `Match signal is ${Math.round(mPct)}% (${match.verdict})${options?.resumeTitle ? ` for ${rl}` : ""}, indicating ${
+        mPct >= 70 ? "strong baseline role alignment" : mPct >= 58 ? "moderate baseline role alignment" : "limited baseline role alignment"
+      }.`,
+    );
+    if (ev.strengths.length > 0) {
+      reasons.push(`The resume highlights strengths such as ${ev.strengths.slice(0, 2).join(" and ")}.`);
+    } else if (strongestDim) {
+      reasons.push(
+        `Best-aligned capability appears to be ${strongestDim.key} at ~${Math.round(strongestDim.value * 100)}%.`,
+      );
+    }
+    if (weakestDim && weakestDim.value < 0.65) {
+      reasons.push(
+        `Lowest-scoring capability is ${weakestDim.key} at ~${Math.round(weakestDim.value * 100)}%, which may limit competitiveness.`,
+      );
+    }
+    reasons.push("Tailored impact has not been evaluated yet, so ATS lift and keyword gains are still unverified.");
 
     const decision_score = Math.round(Math.min(100, mPct * 0.82));
 
-    if (risks.length === 0) {
-      risks.push("Impact evaluation not run — cannot confirm keyword/ATS improvement from tailoring.");
+    if (ev.gaps.length > 0) {
+      risks.push(`Gap analysis flags ${ev.gaps.slice(0, 2).join(" and ")} as weaker areas for this target role.`);
     }
+    if (ev.missingKeywords.length > 0) {
+      risks.push(
+        `Several required keywords are still missing (${ev.missingKeywords.slice(0, 5).join(", ")}), which may reduce ATS competitiveness.`,
+      );
+    }
+    if (mPct >= 55 && mPct < 70) {
+      risks.push("Fit is moderate rather than decisive, so prioritize applying only if this role is high priority.");
+    }
+    if (risks.length === 0) {
+      risks.push("Impact evaluation is not yet available, so improvement potential remains uncertain.");
+    }
+
+    const summary =
+      rec === "apply"
+        ? `Apply with ${conf} confidence: this resume looks broadly aligned, though tailored impact is still unverified.`
+        : rec === "maybe"
+          ? `Maybe with ${conf} confidence: alignment is mixed for this resume and should be strengthened before applying broadly.`
+          : `Skip with ${conf} confidence: current fit evidence is weak for this resume-job pairing.`;
 
     return {
       recommendation: rec,
@@ -148,10 +222,7 @@ export function buildDecision(
       decision_score,
       reasons,
       risks: risks.slice(0, 6),
-      summary:
-        mPct >= 60
-          ? "Match looks workable on score alone, but confirm with impact evaluation before applying."
-          : "Match is marginal or weak; improve alignment or tailor before investing time, unless you have strong context.",
+      summary: `${summary} ${confidenceMeaning(conf)}`,
       provenance: "match_only",
     };
   }
@@ -206,26 +277,64 @@ export function buildDecision(
     Math.min(100, 0.42 * mPct + 0.38 * is + 0.12 * atsAfter + 0.08 * Math.max(0, kwGain * 3)),
   );
 
-  const reasons: string[] = [
-    `Match ~${Math.round(mPct)}%; impact score ~${Math.round(is)}.`,
+  const reasons: string[] = [];
+  const strongestDim = topDimension(ev.dimensionScores, "high");
+  const weakestDim = topDimension(ev.dimensionScores, "low");
+
+  reasons.push(
+    `Baseline fit is ${Math.round(mPct)}% and tailored impact is ${Math.round(is)}, combining role alignment with post-tailoring evidence.`,
+  );
+  if (strongestDim) {
+    reasons.push(
+      `Strongest capability signal is ${strongestDim.key} at ~${Math.round(strongestDim.value * 100)}%, supporting role relevance.`,
+    );
+  } else if (ev.strengths.length > 0) {
+    reasons.push(`Strength signals include ${ev.strengths.slice(0, 2).join(" and ")}.`);
+  }
+  reasons.push(
     atsDelta >= 3
-      ? `ATS-style proxy moved ~${atsBefore.toFixed(0)} → ~${atsAfter.toFixed(0)}.`
-      : `ATS-style proxy: ~${atsAfter.toFixed(0)} after tailoring.`,
-    kwGain >= 0.5
-      ? `Keyword coverage gain ~${kwGain >= 0 ? "+" : ""}${kwGain.toFixed(1)} pp vs baseline.`
-      : "Limited keyword coverage lift — compare JD to tailored resume.",
-  ];
+      ? `Tailoring improved ATS-related signal from ~${atsBefore.toFixed(0)} to ~${atsAfter.toFixed(0)}.`
+      : `ATS-related signal changed only slightly (~${atsBefore.toFixed(0)} to ~${atsAfter.toFixed(0)}).`,
+  );
+  reasons.push(
+    kwGain >= 0.8
+      ? `Keyword alignment improved by about ${kwGain.toFixed(1)} points after tailoring.`
+      : "Keyword alignment improvement is modest, so gains are present but limited.",
+  );
+  if (weakestDim && weakestDim.value < 0.65) {
+    reasons.push(
+      `A weaker capability area remains (${weakestDim.key} ~${Math.round(weakestDim.value * 100)}%), which caps confidence.`,
+    );
+  }
 
   if (impact.notes?.[0]) {
     reasons.push(impact.notes[0].slice(0, 220));
   }
 
+  if (missingCritical.length > 0) {
+    risks.push(
+      `Critical keyword gaps remain (${missingCritical.slice(0, 5).join(", ")}), which can still weaken screening outcomes.`,
+    );
+  }
+  if (kwGain < 0.5) {
+    risks.push("Impact analysis shows limited keyword lift, so tailoring did not materially strengthen this application yet.");
+  }
+  if (atsDelta < 2) {
+    risks.push("ATS-related improvement is small, which lowers confidence in incremental tailoring gains.");
+  }
+  if (ev.gaps.length > 0) {
+    risks.push(`Role-fit gap signals still include ${ev.gaps.slice(0, 2).join(" and ")}.`);
+  }
+  if (mPct < 58) {
+    risks.push("Core fit remains moderate-to-low even after tailoring, so this pairing carries meaningful alignment risk.");
+  }
+
   const summary =
     rec === "apply"
-      ? "Signals support applying, subject to your bar for compensation and role fit."
+      ? `Apply with ${conf} confidence: this resume appears competitive for the role and impact evidence supports that direction. ${confidenceMeaning(conf)}`
       : rec === "maybe"
-        ? "Mixed signals — apply selectively or strengthen weak areas first."
-        : "Weak fit or high risk — skip or rework resume for this posting.";
+        ? `Maybe with ${conf} confidence: signals are mixed and this resume may be worth applying with selective targeting. ${confidenceMeaning(conf)}`
+        : `Skip with ${conf} confidence: fit and risk signals suggest limited return for this resume on this role. ${confidenceMeaning(conf)}`;
 
   return {
     recommendation: rec,
@@ -346,23 +455,33 @@ export async function evaluateAndMaybePersistDecision(input: {
   );
 
   if (input.persist) {
-    await prisma.decisionAnalysis.create({
-      data: {
-        userId,
-        jobId: input.jobId,
-        resumeId: input.resumeId,
-        tailoredResumeId: ctx.tailoredResumeId,
-        matchAnalysisId: ctx.matchAnalysisId,
-        impactMetricId: ctx.impactMetricId,
-        recommendation: ctx.decision.recommendation,
-        confidence: ctx.decision.confidence,
-        decisionScore: ctx.decision.decision_score,
-        reasons: ctx.decision.reasons as object,
-        risks: ctx.decision.risks as object,
-        summary: ctx.decision.summary,
-        provenance: ctx.decision.provenance,
-      },
-    });
+    try {
+      await prisma.decisionAnalysis.create({
+        data: {
+          userId,
+          jobId: input.jobId,
+          resumeId: input.resumeId,
+          tailoredResumeId: ctx.tailoredResumeId,
+          matchAnalysisId: ctx.matchAnalysisId,
+          impactMetricId: ctx.impactMetricId,
+          recommendation: ctx.decision.recommendation,
+          confidence: ctx.decision.confidence,
+          decisionScore: ctx.decision.decision_score,
+          reasons: ctx.decision.reasons as object,
+          risks: ctx.decision.risks as object,
+          summary: ctx.decision.summary,
+          provenance: ctx.decision.provenance,
+        },
+      });
+    } catch (e) {
+      const hint = getPrismaUserMessage(e);
+      if (isMissingTableError(e)) {
+        throw new Error(
+          `Cannot save decision: DecisionAnalysis table is missing. Apply the schema (${hint})`,
+        );
+      }
+      throw new Error(`Cannot save decision: ${hint}`);
+    }
   }
 
   return ctx;

@@ -1,3 +1,4 @@
+import { assertRealModePipelineConfigured } from "@/lib/config/app-mode";
 import { scoreMatchMock } from "@/lib/agents";
 import { callFlaskPipeline } from "@/lib/flask/client";
 import { isFlaskPipelineEnabled } from "@/lib/flask/env";
@@ -16,6 +17,8 @@ export async function scoreMatch(input: { resumeId: string; jobId: string; userI
   if (!resume || !job) {
     throw new Error("Resume or job not found for user");
   }
+
+  assertRealModePipelineConfigured();
 
   let scored: {
     matchScore: number;

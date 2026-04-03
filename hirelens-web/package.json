@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "predev": "prisma generate",
+    "dev": "node scripts/dev-start.mjs",
+    "dev:clean": "node scripts/dev-clean.mjs",
     "build": "next build",
     "start": "next start",
+    "postinstall": "prisma generate",
     "lint": "next lint",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

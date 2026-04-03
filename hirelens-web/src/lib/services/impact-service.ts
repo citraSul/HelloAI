@@ -1,3 +1,4 @@
+import { assertRealModePipelineConfigured } from "@/lib/config/app-mode";
 import { evaluateImpactMock } from "@/lib/agents";
 import { callFlaskEvaluateImpact } from "@/lib/flask/client";
 import { isFlaskPipelineEnabled } from "@/lib/flask/env";
@@ -16,6 +17,8 @@ export async function evaluateImpact(input: { tailoredResumeId: string; userId?:
   if (!tailored) {
     throw new Error("Tailored resume not found");
   }
+
+  assertRealModePipelineConfigured();
 
   const [job, resume, analysis] = await Promise.all([
     prisma.job.findFirst({ where: { id: tailored.jobId, userId } }),

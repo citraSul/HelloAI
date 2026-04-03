@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { parseResumeSections } from "@/lib/resume/parse-sections";
 import { TailoredDiffText } from "@/lib/resume/diff-render";
@@ -24,13 +25,38 @@ type TailorMeta = {
   warnings: string[];
 };
 
-export function TailorStudio() {
+function buildTailorSearch(resumeId: string, jobId: string) {
+  const params = new URLSearchParams();
+  if (resumeId) params.set("resumeId", resumeId);
+  if (jobId) params.set("jobId", jobId);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+async function readListErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: unknown };
+    if (typeof body?.error === "string" && body.error.trim()) return body.error;
+  } catch {
+    /* ignore non-JSON or empty body */
+  }
+  return fallback;
+}
+
+export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [resumes, setResumes] = useState<Opt[]>([]);
   const [jobs, setJobs] = useState<JobOpt[]>([]);
+  const [listsReady, setListsReady] = useState(false);
   const [resumeId, setResumeId] = useState("");
   const [jobId, setJobId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resumesLoadError, setResumesLoadError] = useState<string | null>(null);
+  const [jobsLoadError, setJobsLoadError] = useState<string | null>(null);
 
   const [originalText, setOriginalText] = useState("");
   const [tailoredText, setTailoredText] = useState("");
@@ -52,23 +78,102 @@ export function TailorStudio() {
   const [locked, setLocked] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    async function load() {
+    let cancelled = false;
+
+    async function loadResumes() {
+      setResumesLoadError(null);
       try {
-        const [r, j] = await Promise.all([fetch("/api/data/resumes"), fetch("/api/data/jobs")]);
-        if (r.ok) {
-          const d = await r.json();
-          setResumes(d.items ?? []);
-        }
-        if (j.ok) {
-          const d = await r.json();
-          setJobs(d.items ?? []);
+        const res = await fetch("/api/data/resumes");
+        if (cancelled) return;
+        if (res.ok) {
+          const d = await res.json();
+          setResumes(Array.isArray(d.items) ? d.items : []);
+        } else {
+          setResumes([]);
+          setResumesLoadError(await readListErrorMessage(res, "Could not load resumes."));
         }
       } catch {
-        setError("Could not load resumes or jobs.");
+        if (!cancelled) {
+          setResumes([]);
+          setResumesLoadError("Could not load resumes.");
+        }
       }
     }
-    load();
+
+    async function loadJobs() {
+      setJobsLoadError(null);
+      try {
+        const res = await fetch("/api/data/jobs");
+        if (cancelled) return;
+        if (res.ok) {
+          const d = await res.json();
+          setJobs(Array.isArray(d.items) ? d.items : []);
+        } else {
+          setJobs([]);
+          setJobsLoadError(await readListErrorMessage(res, "Could not load jobs."));
+        }
+      } catch {
+        if (!cancelled) {
+          setJobs([]);
+          setJobsLoadError("Could not load jobs.");
+        }
+      }
+    }
+
+    (async () => {
+      await Promise.all([loadResumes(), loadJobs()]);
+      if (!cancelled) setListsReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  /** Deep link + back/forward: selection follows ?resumeId= & ?jobId=. */
+  useEffect(() => {
+    if (!listsReady) return;
+
+    const r = searchParams.get("resumeId") ?? "";
+    const j = searchParams.get("jobId") ?? "";
+
+    const rValid = r && resumes.some((x) => x.id === r);
+    const jValid = j && jobs.some((x) => x.id === j);
+
+    if ((r && !rValid) || (j && !jValid)) {
+      const cleanR = rValid ? r : "";
+      const cleanJ = jValid ? j : "";
+      router.replace(`${pathname}${buildTailorSearch(cleanR, cleanJ)}`, { scroll: false });
+      return;
+    }
+
+    if (r !== resumeId) {
+      setResumeId(r);
+      setTailoredText("");
+      setMeta(null);
+      setDecisionMetrics(null);
+      setImpactRunCompleted(false);
+      setImpactParseWarning(null);
+      setEngineDecision(null);
+      setEngineError(null);
+    }
+    if (j !== jobId) {
+      setJobId(j);
+      setLastTailoredId(null);
+      setTailoredText("");
+      setMeta(null);
+      setDecisionMetrics(null);
+      setImpactRunCompleted(false);
+      setImpactParseWarning(null);
+      setAtsBefore(null);
+      setAtsAfter(null);
+      setImpactScore(null);
+      setKeywordGain(null);
+      setMissingKeywords([]);
+      setEngineDecision(null);
+      setEngineError(null);
+    }
+  }, [listsReady, searchParams, resumes, jobs, router, pathname, resumeId, jobId]);
 
   useEffect(() => {
     if (!resumeId) {
@@ -97,6 +202,7 @@ export function TailorStudio() {
   }, [resumeId]);
 
   const selectedJob = useMemo(() => jobs.find((j) => j.id === jobId), [jobs, jobId]);
+  const selectedResume = useMemo(() => resumes.find((r) => r.id === resumeId), [resumes, resumeId]);
 
   const originalSections = useMemo(() => parseResumeSections(originalText), [originalText]);
 
@@ -235,17 +341,49 @@ export function TailorStudio() {
     URL.revokeObjectURL(a.href);
   }, [tailoredText, meta?.jobTitle, selectedJob?.title]);
 
+  const showContextStrip =
+    listsReady && (selectedJob != null || selectedResume != null);
+
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col">
+      {showContextStrip && (
+        <div
+          className="mb-6 rounded-xl border border-border bg-card/60 px-4 py-3 text-sm shadow-sm"
+          aria-live="polite"
+        >
+          {selectedJob && (
+            <p className="text-foreground">
+              <span className="font-medium">{selectedJob.title}</span>
+              {selectedJob.company ? (
+                <span className="text-muted-foreground"> · {selectedJob.company}</span>
+              ) : null}
+            </p>
+          )}
+          {selectedResume && (
+            <p
+              className={cn(
+                "text-muted-foreground",
+                selectedJob && "mt-1",
+              )}
+            >
+              <span className="text-[11px] font-medium uppercase tracking-wide text-label">Resume</span>{" "}
+              <span className="text-foreground/90">{selectedResume.label}</span>
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Selection */}
-      <div className="mb-6 flex flex-wrap items-end gap-4">
+      <div className="mb-8 rounded-2xl border border-border p-6">
+        <div className="flex flex-wrap items-end gap-4">
         <div className="min-w-[200px] flex-1">
           <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-label">Resume</label>
           <select
             className="w-full rounded-xl border border-border bg-card py-2.5 pl-3 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/25"
             value={resumeId}
             onChange={(e) => {
-              setResumeId(e.target.value);
+              const next = e.target.value;
+              setResumeId(next);
               setTailoredText("");
               setMeta(null);
               setDecisionMetrics(null);
@@ -253,6 +391,7 @@ export function TailorStudio() {
               setImpactParseWarning(null);
               setEngineDecision(null);
               setEngineError(null);
+              router.replace(`${pathname}${buildTailorSearch(next, jobId)}`, { scroll: false });
             }}
           >
             <option value="">Choose resume…</option>
@@ -262,6 +401,11 @@ export function TailorStudio() {
               </option>
             ))}
           </select>
+          {resumesLoadError && (
+            <p className="mt-2 text-xs text-score-danger" role="alert">
+              {resumesLoadError}
+            </p>
+          )}
         </div>
         <div className="min-w-[200px] flex-1">
           <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-label">Job</label>
@@ -269,7 +413,8 @@ export function TailorStudio() {
             className="w-full rounded-xl border border-border bg-card py-2.5 pl-3 pr-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/25"
             value={jobId}
             onChange={(e) => {
-              setJobId(e.target.value);
+              const next = e.target.value;
+              setJobId(next);
               setLastTailoredId(null);
               setTailoredText("");
               setMeta(null);
@@ -283,6 +428,7 @@ export function TailorStudio() {
               setMissingKeywords([]);
               setEngineDecision(null);
               setEngineError(null);
+              router.replace(`${pathname}${buildTailorSearch(resumeId, next)}`, { scroll: false });
             }}
           >
             <option value="">Choose job…</option>
@@ -292,21 +438,34 @@ export function TailorStudio() {
               </option>
             ))}
           </select>
+          {jobsLoadError && (
+            <p className="mt-2 text-xs text-score-danger" role="alert">
+              {jobsLoadError}
+            </p>
+          )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={loading || !resumeId || !jobId} onClick={runTailor}>
-            {loading ? "Working…" : "Tailor resume"}
-          </Button>
-          <Button disabled={loading || !lastTailoredId} variant="outline" onClick={runImpact}>
-            Evaluate impact
-          </Button>
+        <div className="flex min-w-[200px] flex-1 flex-col gap-2">
+          {mockMode && (
+            <p className="text-xs text-muted-foreground" role="status">
+              Preview mode: Tailoring is limited in mock mode
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={loading || !resumeId || !jobId} onClick={runTailor}>
+              {loading ? "Working…" : "Tailor resume"}
+            </Button>
+            <Button disabled={loading || !lastTailoredId} variant="outline" onClick={runImpact}>
+              Evaluate impact
+            </Button>
+          </div>
+        </div>
         </div>
       </div>
 
       {error && <p className="mb-4 text-sm text-score-danger">{error}</p>}
 
       {/* Sticky top bar */}
-      <div className="sticky top-0 z-20 -mx-4 mb-6 border-b border-border bg-surface/95 px-4 py-4 backdrop-blur-md md:-mx-6 md:px-6">
+      <div className="sticky top-0 z-20 mb-8 rounded-xl border border-border bg-surface/95 px-6 py-4 backdrop-blur-md">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
           <div className="min-w-0">
             <p className="text-lg font-semibold tracking-tight text-foreground">
@@ -369,7 +528,7 @@ export function TailorStudio() {
         </DocumentPanel>
 
         {/* Insights */}
-        <aside className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-card">
+        <aside className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-card">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Change log</h3>
             <ul className="mt-3 max-h-40 space-y-3 overflow-y-auto text-sm text-muted-foreground">

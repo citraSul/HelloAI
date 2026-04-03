@@ -1,3 +1,4 @@
+import { assertRealModePipelineConfigured } from "@/lib/config/app-mode";
 import { tailorResumeMock } from "@/lib/agents";
 import { callFlaskPipeline } from "@/lib/flask/client";
 import { isFlaskPipelineEnabled } from "@/lib/flask/env";
@@ -53,6 +54,8 @@ export async function tailorResume(input: { resumeId: string; jobId: string; use
     throw new Error("Resume or job not found for user");
   }
 
+  assertRealModePipelineConfigured();
+
   let content: string;
   let raw: unknown;
 
@@ -70,21 +73,34 @@ export async function tailorResume(input: { resumeId: string; jobId: string; use
     content = String(tailored);
     raw = out;
   } else {
-    content = await tailorResumeMock(resume.rawText, job.title);
-    raw = { length: content.length };
+    const mockResult = await tailorResumeMock(resume.rawText, job.title, {
+      company: job.company,
+      jobDescription: job.rawDescription,
+    });
+    content = mockResult.tailoredText;
+    raw = { length: content.length, mockChangeLog: mockResult.changeLog };
   }
 
   const { changeLog, warnings } = extractTailoringMeta(raw);
+  const mockChangeLog =
+    !isFlaskPipelineEnabled() && raw && typeof raw === "object" && "mockChangeLog" in raw
+      ? (raw as { mockChangeLog: TailorChangeEntry[] }).mockChangeLog
+      : [];
+
   const syntheticLog: TailorChangeEntry[] =
-    changeLog.length === 0 && content.trim() !== resume.rawText.trim()
-      ? [
-          {
-            section: "document",
-            summary: "Resume adjusted for target role (mock tailoring).",
-            detail: "Compare center column for highlighted edits.",
-          },
-        ]
-      : changeLog;
+    changeLog.length > 0
+      ? changeLog
+      : mockChangeLog.length > 0
+        ? mockChangeLog
+        : content.trim() !== resume.rawText.trim()
+          ? [
+              {
+                section: "document",
+                summary: "Resume adjusted for target role (mock tailoring).",
+                detail: "Compare center column for highlighted edits.",
+              },
+            ]
+          : [];
 
   const tailoredRow = await prisma.tailoredResume.create({
     data: {

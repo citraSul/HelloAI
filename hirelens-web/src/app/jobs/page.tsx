@@ -10,6 +10,7 @@ import { ScoreBadge } from "@/components/score-badge";
 import { DecisionListBadge } from "@/components/decision-list-badge";
 import { JobCreateForm } from "@/components/job-create-form";
 import { resolveUserId } from "@/lib/services/user";
+import { cn } from "@/lib/utils/cn";
 
 const jobListInclude = {
   matchAnalyses: { orderBy: { createdAt: "desc" as const }, take: 1 },
@@ -37,7 +38,16 @@ export default async function JobsPage() {
 
   return (
     <AppShell title="Jobs">
-      <PageHeader title="Jobs" description="Roles you track and the latest match signal for each." />
+      <PageHeader title="Jobs" description="Roles you track and the latest match signal for each.">
+        <Link
+          href="/analytics"
+          className={cn(
+            "inline-flex h-10 items-center justify-center rounded-xl border border-border bg-transparent px-4 text-sm font-medium text-foreground transition-all duration-200 hover:border-border-hover hover:bg-muted/50",
+          )}
+        >
+          View analytics
+        </Link>
+      </PageHeader>
       <div className="mb-10">
         <JobCreateForm />
       </div>
@@ -54,12 +64,18 @@ export default async function JobsPage() {
           description="POST to /api/jobs/analyze with title, company, and rawDescription to add a role."
         />
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-3">
           {jobs.map((job) => {
             const latest = job.matchAnalyses[0];
             return (
               <li key={job.id}>
-                <Link href={`/jobs/${job.id}`} className="block">
+                <Link
+                  href={`/jobs/${job.id}`}
+                  className={cn(
+                    "block cursor-pointer rounded-xl",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+                  )}
+                >
                   <Card className="transition-all duration-200 hover:border-border-hover hover:shadow-card">
                     <CardContent className="flex items-center justify-between gap-4 py-5">
                       <div className="min-w-0">

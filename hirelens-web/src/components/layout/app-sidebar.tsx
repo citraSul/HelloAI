@@ -8,6 +8,7 @@ import {
   FileText,
   LayoutDashboard,
   PenLine,
+  Stethoscope,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
@@ -17,6 +18,7 @@ const nav = [
   { href: "/tailor", label: "Tailor", icon: PenLine },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/resumes", label: "Resumes", icon: FileText },
+  { href: "/diagnostics", label: "Diagnostics", icon: Stethoscope },
 ];
 
 export function AppSidebar() {

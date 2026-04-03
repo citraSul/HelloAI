@@ -24,6 +24,12 @@ function confStyles(c: DecisionOutput["confidence"]) {
   }
 }
 
+function confMeaning(c: DecisionOutput["confidence"]) {
+  if (c === "high") return "Strong evidence this resume is competitive for this role.";
+  if (c === "medium") return "Worth considering, with meaningful caveats to review.";
+  return "Current evidence is weak; proceed only with strong strategic reasons.";
+}
+
 export function DecisionSummaryCard({
   decision,
   title = "Application decision",
@@ -79,6 +85,7 @@ export function DecisionSummaryCard({
           )}
         </div>
         <p className="text-sm leading-relaxed text-foreground/95">{decision.summary}</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">{confMeaning(decision.confidence)}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-label">Top reasons</p>

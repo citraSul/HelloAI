@@ -9,6 +9,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ApplicationOutcomeStatus {
+  saved
+  applied
+  responded
+  interviewed
+  offered
+  rejected
+  archived
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -16,13 +26,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  resumes           Resume[]
-  jobs              Job[]
-  matchAnalyses     MatchAnalysis[]
-  tailoredResumes   TailoredResume[]
-  impactMetrics     ImpactMetric[]
-  decisionAnalyses  DecisionAnalysis[]
-  agentRuns         AgentRun[]
+  resumes              Resume[]
+  jobs                 Job[]
+  matchAnalyses        MatchAnalysis[]
+  tailoredResumes      TailoredResume[]
+  impactMetrics        ImpactMetric[]
+  decisionAnalyses     DecisionAnalysis[]
+  agentRuns            AgentRun[]
+  applicationOutcomes ApplicationOutcome[]
 }
 
 model Resume {
@@ -38,6 +49,7 @@ model Resume {
   matchAnalyses MatchAnalysis[]
   tailoredResumes TailoredResume[]
   decisionAnalyses DecisionAnalysis[]
+  applicationOutcomes ApplicationOutcome[]
 }
 
 model ParsedResumeProfile {
@@ -64,6 +76,7 @@ model Job {
   matchAnalyses   MatchAnalysis[]
   tailoredResumes TailoredResume[]
   decisionAnalyses DecisionAnalysis[]
+  applicationOutcomes ApplicationOutcome[]
 }
 
 model MatchAnalysis {
@@ -99,6 +112,7 @@ model TailoredResume {
   job          Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
   impactMetrics ImpactMetric[]
   decisionAnalyses DecisionAnalysis[]
+  applicationOutcomes ApplicationOutcome[]
 }
 
 model ImpactMetric {
@@ -138,9 +152,39 @@ model DecisionAnalysis {
   matchAnalysis  MatchAnalysis?  @relation(fields: [matchAnalysisId], references: [id], onDelete: SetNull)
   impactMetric   ImpactMetric?   @relation(fields: [impactMetricId], references: [id], onDelete: SetNull)
   tailoredResume TailoredResume? @relation(fields: [tailoredResumeId], references: [id], onDelete: SetNull)
+  applicationOutcomes ApplicationOutcome[]
 
   @@index([userId])
   @@index([jobId, resumeId])
+}
+
+model ApplicationOutcome {
+  id                 String                   @id @default(cuid())
+  userId             String
+  jobId              String
+  resumeId           String
+  tailoredResumeId   String?
+  decisionAnalysisId String?
+  status             ApplicationOutcomeStatus @default(saved)
+  appliedAt          DateTime?
+  respondedAt        DateTime?
+  interviewedAt      DateTime?
+  offeredAt          DateTime?
+  rejectedAt         DateTime?
+  notes              String?                  @db.Text
+  source             String?                  @default("manual")
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job                Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  resume             Resume            @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  tailoredResume     TailoredResume?   @relation(fields: [tailoredResumeId], references: [id], onDelete: SetNull)
+  decisionAnalysis   DecisionAnalysis? @relation(fields: [decisionAnalysisId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, jobId, resumeId])
+  @@index([userId])
+  @@index([jobId])
 }
 
 model AgentRun {

@@ -36,19 +36,45 @@ export type FlaskPipelineResponse = {
   warnings?: string[];
 };
 
+function logFlaskFailure(endpoint: string, url: string, status: number, message?: string, bodyOk?: boolean) {
+  console.error("[HireLens] Flask pipeline failure", {
+    endpoint,
+    url,
+    status,
+    responseOk: bodyOk,
+    message: message ?? null,
+  });
+}
+
 export async function callFlaskPipeline(body: FlaskPipelineBody): Promise<FlaskPipelineResponse> {
   const base = getFlaskBaseUrl();
-  const res = await fetch(`${base}/api/internal/v2/pipeline`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": apiKey(),
-    },
-    body: JSON.stringify(body),
-  });
+  const url = `${base}/api/internal/v2/pipeline`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey(),
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    const err = e instanceof Error ? e.message : String(e);
+    console.error("[HireLens] Flask pipeline network error", { url, error: err });
+    throw new Error(`Flask pipeline unreachable: ${err}`);
+  }
 
-  const data = (await res.json()) as FlaskPipelineResponse;
+  let data: FlaskPipelineResponse;
+  try {
+    data = JSON.parse(await res.text()) as FlaskPipelineResponse;
+  } catch {
+    logFlaskFailure("pipeline", url, res.status, "non-JSON body", undefined);
+    throw new Error(`Flask pipeline returned non-JSON (${res.status})`);
+  }
+
   if (!res.ok || !data.ok) {
+    logFlaskFailure("pipeline", url, res.status, data.message, data.ok);
     throw new Error(data.message || `Flask pipeline failed (${res.status})`);
   }
   return data;
@@ -63,17 +89,33 @@ export type FlaskEvaluateImpactBody = {
 
 export async function callFlaskEvaluateImpact(body: FlaskEvaluateImpactBody): Promise<Record<string, unknown>> {
   const base = getFlaskBaseUrl();
-  const res = await fetch(`${base}/api/internal/evaluate-impact`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": apiKey(),
-    },
-    body: JSON.stringify(body),
-  });
+  const url = `${base}/api/internal/evaluate-impact`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey(),
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    const err = e instanceof Error ? e.message : String(e);
+    console.error("[HireLens] Flask evaluate-impact network error", { url, error: err });
+    throw new Error(`Flask impact unreachable: ${err}`);
+  }
 
-  const data = (await res.json()) as Record<string, unknown> & { ok?: boolean; message?: string };
+  let data: Record<string, unknown> & { ok?: boolean; message?: string };
+  try {
+    data = JSON.parse(await res.text()) as Record<string, unknown> & { ok?: boolean; message?: string };
+  } catch {
+    logFlaskFailure("evaluate-impact", url, res.status, "non-JSON body", undefined);
+    throw new Error(`Flask impact returned non-JSON (${res.status})`);
+  }
+
   if (!res.ok || !data.ok) {
+    logFlaskFailure("evaluate-impact", url, res.status, String(data.message ?? ""), Boolean(data.ok));
     throw new Error(String(data.message || `Flask impact failed (${res.status})`));
   }
   const { ok, message, ...rest } = data;

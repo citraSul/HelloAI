@@ -31,7 +31,7 @@ export default async function ResumesPage() {
   return (
     <AppShell title="Resumes">
       <PageHeader title="Resume library" description="Uploaded resumes and parsed profile snapshots." />
-      <div className="mb-10">
+      <div className="mb-8">
         <ResumeCreateForm />
       </div>
       {loadError ? (
@@ -47,11 +47,11 @@ export default async function ResumesPage() {
           description="POST to /api/resume/upload with title and rawText to add your first resume."
         />
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-3">
           {resumes.map((r) => (
             <li key={r.id}>
               <Card>
-                <CardContent className="py-6">
+                <CardContent className="py-5">
                   <p className="font-semibold text-foreground">{r.title}</p>
                   <p className="mt-1 font-mono text-xs text-label">ID: {r.id}</p>
                   {r.parsed && (

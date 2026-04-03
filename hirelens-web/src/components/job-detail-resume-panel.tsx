@@ -86,9 +86,19 @@ export function JobDetailResumePanel({
         </div>
         {error && <p className="text-sm text-score-danger">{error}</p>}
         {success && !error && <p className="text-sm text-score-success">Match saved. Updating…</p>}
-        <Button disabled={loading || !resumeId} onClick={runScore} className="w-full sm:w-auto">
-          {loading ? "Scoring…" : "Score match"}
-        </Button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <Button disabled={loading || !resumeId} onClick={runScore} className="w-full sm:w-auto">
+            {loading ? "Scoring…" : "Score match"}
+          </Button>
+          <Link
+            href={`/tailor?jobId=${encodeURIComponent(jobId)}&resumeId=${encodeURIComponent(resumeId)}`}
+            className={cn(
+              "inline-flex h-10 w-full items-center justify-center rounded-lg border border-border bg-transparent px-4 text-sm font-medium text-foreground transition-all duration-200 hover:border-border-hover hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-auto",
+            )}
+          >
+            Tailor this resume
+          </Link>
+        </div>
       </CardContent>
     </Card>
   );

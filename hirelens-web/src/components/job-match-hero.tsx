@@ -5,10 +5,12 @@ export function JobMatchHero({
   company,
   matchScore,
   verdict,
+  resumeTitle,
 }: {
   company: string | null;
   matchScore: number;
   verdict: string;
+  resumeTitle?: string | null;
 }) {
   const pct = Math.round(matchScore * 100);
 
@@ -16,6 +18,7 @@ export function JobMatchHero({
     <Card className="overflow-hidden border-border bg-gradient-to-br from-card via-card to-surface/40 shadow-brand-soft">
       <CardContent className="p-6 md:p-8">
         <p className="text-xs font-medium uppercase tracking-wider text-label">Match signal</p>
+        {resumeTitle && <p className="mt-1 text-xs text-muted-foreground">For resume: {resumeTitle}</p>}
         <div className="mt-4 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-sm text-muted-foreground">{company ?? "Role"}</p>
