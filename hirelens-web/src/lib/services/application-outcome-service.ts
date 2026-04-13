@@ -52,6 +52,8 @@ function timestampPatchForStatus(
         rejectedAt: t,
         appliedAt: existing.appliedAt ?? t,
       };
+    case "skipped":
+      return {};
     case "archived":
       return {};
     default: {

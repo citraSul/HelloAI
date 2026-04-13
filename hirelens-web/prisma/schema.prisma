@@ -16,6 +16,7 @@ enum ApplicationOutcomeStatus {
   interviewed
   offered
   rejected
+  skipped
   archived
 }
 
@@ -25,6 +26,10 @@ model User {
   name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /** Optional default resume for job detail / flows when `?resumeId=` is absent. */
+  primaryResumeId String? @unique
+  primaryResume   Resume? @relation("UserPrimaryResume", fields: [primaryResumeId], references: [id], onDelete: SetNull)
 
   resumes              Resume[]
   jobs                 Job[]
@@ -43,6 +48,8 @@ model Resume {
   rawText   String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  designatedPrimaryForUser User? @relation("UserPrimaryResume")
 
   user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   parsed       ParsedResumeProfile?
@@ -69,6 +76,10 @@ model Job {
   company         String?
   rawDescription  String   @db.Text
   analyzedJson    Json?
+  source          String?
+  externalId      String?
+  applyUrl        String?
+  fetchedAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -77,6 +88,8 @@ model Job {
   tailoredResumes TailoredResume[]
   decisionAnalyses DecisionAnalysis[]
   applicationOutcomes ApplicationOutcome[]
+
+  @@unique([userId, source, externalId])
 }
 
 model MatchAnalysis {

@@ -23,12 +23,14 @@ APP_MODE=real
 
 ## Database
 
-1. Copy `hirelens-web/.env.example` to `hirelens-web/.env.local` and set `DATABASE_URL`.
+1. Copy `hirelens-web/.env.example` to `hirelens-web/.env` and set `DATABASE_URL` (replace `__REPLACE_ME__` with your Postgres password). Keep **`DATABASE_URL` only in `.env`** so Prisma (`db:push`) and Next.js use the same value — do not repeat it in `.env.local` (Next loads `.env.local` after `.env` and would override).
 2. From `hirelens-web/` apply the schema (creates all tables including **DecisionAnalysis**):
 
 ```bash
 npm run db:push
 ```
+
+Checked-in SQL migrations under `prisma/migrations/` are the source of truth for production (`npx prisma migrate deploy` — see [`deploy.md`](./deploy.md)). On a **new empty** database you can use **`npx prisma migrate deploy`** instead of `db:push` to mirror production. Otherwise keep using **`db:push`** for speed, or **`npx prisma migrate dev`** when evolving migrations.
 
 If a table is missing, Dashboard/Analytics may show **sample data** with a banner — use **Diagnostics** to verify. The dev server also **logs a warning** on startup if `DecisionAnalysis` is missing (decision persistence will fail until you run `db:push`).
 
@@ -36,14 +38,14 @@ If a table is missing, Dashboard/Analytics may show **sample data** with a banne
 
 - **`npm install`** runs **`prisma generate`** (`postinstall`).
 - **`npm run dev`** runs **`prisma generate`** again (`predev`) so the client matches the schema before starting.
-- After **editing `prisma/schema.prisma`**, run **`npm run db:push`** (or migrate), then **restart** the dev server so the global Prisma singleton picks up changes.
+- After **editing `prisma/schema.prisma`**, run **`npm run db:push`** or **`npx prisma migrate dev`**, then **restart** the dev server so the global Prisma singleton picks up changes.
 
 ## Mock mode (fastest local setup)
 
 ```bash
 cd hirelens-web
-cp .env.example .env.local
-# Set DATABASE_URL only; leave APP_MODE unset or APP_MODE=mock
+cp .env.example .env
+# Edit .env: set DATABASE_URL (replace __REPLACE_ME__); leave APP_MODE=mock or add .env.local for overrides
 npm install
 npm run db:push
 npm run dev
@@ -54,7 +56,7 @@ Open `http://127.0.0.1:3000/diagnostics` to confirm DB + mode.
 ## Real mode (Flask pipeline)
 
 1. Start the Flask API (repo root Python app) on the URL in `FLASK_BASE_URL`.
-2. Set the same `HIRELENS_INTERNAL_API_KEY` in Flask and Next `.env.local`.
+2. Set the same `HIRELENS_INTERNAL_API_KEY` in Flask and Next (`.env` and/or `.env.local`).
 3. Set `APP_MODE=real`.
 
 ```bash
@@ -133,6 +135,17 @@ npm run dev
 ## Recovery checklist (app unstable)
 
 1. Stop **all** `next dev` processes.
-2. `cd hirelens-web && npm run db:push` (with `.env.local` loaded).
+2. `cd hirelens-web && npm run db:push` (Prisma reads `hirelens-web/.env`; ensure `DATABASE_URL` is set there).
 3. `npm run dev:clean`
 4. Open `http://127.0.0.1:3000/diagnostics` — all tables should be OK.
+
+## Browser E2E (Playwright)
+
+From `hirelens-web/`:
+
+1. One-time (per machine / after `@playwright/test` upgrades): `npm run test:e2e:install`
+2. Run: `npm run test:e2e` — starts `npm run dev` on **127.0.0.1:3000** or reuses an existing server on that port (see `playwright.config.ts` `webServer.reuseExistingServer`).
+
+Tests expect the same **`.env` / `.env.local`** as normal dev (especially **`DATABASE_URL`**) so SSR pages render. Optional UI: `npm run test:e2e:ui`.
+
+The **`e2e/ingest.spec.ts`** flow calls **`POST /api/jobs/ingest`** and needs a non-empty **`CRON_SECRET`** in server env and in the test’s resolution (same file / `process.env`). If ingest cannot reach providers or persist rows, that test **skips** instead of failing.

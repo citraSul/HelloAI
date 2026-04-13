@@ -498,3 +498,24 @@ export function quickDecisionLabelFromMatch(matchScore: number): {
   if (p >= 40) return { label: "Weak", tone: "danger" };
   return { label: "Low fit", tone: "muted" };
 }
+
+/**
+ * Coarse apply / consider / skip hint for job list rows.
+ * Uses verdict when decisive, otherwise the same score bands as internal decision hints (~72% / ~48%).
+ */
+export function quickApplyGuidanceFromMatch(
+  matchScore: number,
+  verdict: string,
+): { label: "Apply" | "Consider" | "Skip"; tone: "success" | "warning" | "danger" } {
+  const p = matchPercent(matchScore);
+  const v = verdict.trim().toLowerCase();
+
+  if (v === "strong") return { label: "Apply", tone: "success" };
+  if (v === "poor") return { label: "Skip", tone: "danger" };
+  if (v === "weak" && p < 45) return { label: "Skip", tone: "danger" };
+  if (v === "weak") return { label: "Consider", tone: "warning" };
+
+  if (p >= 72) return { label: "Apply", tone: "success" };
+  if (p < 48) return { label: "Skip", tone: "danger" };
+  return { label: "Consider", tone: "warning" };
+}

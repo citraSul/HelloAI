@@ -1,8 +1,11 @@
 import { matchScoreSchema } from "@/lib/validators/match";
 import { scoreMatch } from "@/lib/services/match-service";
-import { jsonError, jsonFromZod, jsonOk } from "@/lib/api/json";
+import { jsonFromServiceError, jsonFromZod, jsonOk } from "@/lib/api/json";
 import { logPipelineDebug, isPipelineDebugEnabled } from "@/lib/dev/pipeline-debug-log";
 import { isFlaskPipelineEnabled } from "@/lib/flask/env";
+
+/** Flask client uses Node `fetch` + retries — not Edge. */
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
@@ -25,9 +28,6 @@ export async function POST(req: Request) {
     }
     return jsonOk({ analysis });
   } catch (e) {
-    console.error(e);
-    const msg = e instanceof Error ? e.message : "Score failed";
-    const status = msg.includes("not found") ? 404 : 500;
-    return jsonError(msg, status);
+    return jsonFromServiceError(e, "not found");
   }
 }

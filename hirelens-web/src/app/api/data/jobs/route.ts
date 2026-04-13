@@ -9,14 +9,19 @@ export async function GET() {
       where: { userId },
       orderBy: { updatedAt: "desc" },
       take: 100,
-      select: { id: true, title: true, company: true },
+      select: { id: true, title: true, company: true, source: true },
     });
-    const items = rows.map((r) => ({
-      id: r.id,
-      label: r.company ? `${r.title} — ${r.company}` : r.title,
-      title: r.title,
-      company: r.company,
-    }));
+    const items = rows.map((r) => {
+      const base = r.company ? `${r.title} — ${r.company}` : r.title;
+      const label = r.source ? `${base} · ${r.source}` : base;
+      return {
+        id: r.id,
+        label,
+        title: r.title,
+        company: r.company,
+        source: r.source,
+      };
+    });
     return jsonOk({ items });
   } catch (e) {
     console.error(e);

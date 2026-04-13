@@ -6,6 +6,13 @@ import { normalizeImpactMetrics } from "@/lib/services/normalize-impact-metrics"
 import { prisma } from "@/lib/db/prisma";
 import { resolveUserId } from "@/lib/services/user";
 import { getDashboardOutcomeSnapshot } from "@/lib/services/application-outcome-service";
+import { fetchJobsListBundle } from "@/lib/services/jobs-list-bundle";
+import {
+  computeJobsListSummary,
+  jobsFromBundleToSummaryRows,
+  type JobsListSummary,
+} from "@/lib/jobs-list-summary";
+import { JobsSummaryStrip } from "@/components/jobs-summary-strip";
 import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
 
@@ -143,6 +150,16 @@ export default async function DashboardPage() {
     }
   }
 
+  let jobsWorkflowSummary: JobsListSummary | null = null;
+  if (overview && userId && !usingSample) {
+    try {
+      const { jobs, statusByJob } = await fetchJobsListBundle(userId);
+      jobsWorkflowSummary = computeJobsListSummary(jobsFromBundleToSummaryRows(jobs, statusByJob));
+    } catch {
+      jobsWorkflowSummary = null;
+    }
+  }
+
   return (
     <AppShell title="Dashboard">
       <PageHeader
@@ -182,6 +199,32 @@ export default async function DashboardPage() {
       ) : (
         <div className="grid gap-8 lg:grid-cols-[1fr_minmax(280px,320px)]">
           <div className="space-y-8">
+            {jobsWorkflowSummary ? (
+              <Card>
+                <CardHeader className="pb-2">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <CardTitle>Job workflow</CardTitle>
+                      <p className="mt-1 text-xs font-normal text-muted-foreground">
+                        Same metrics as the Jobs page summary — latest match per role and tracking on your default
+                        resume (max 50).
+                      </p>
+                    </div>
+                    <Link
+                      href="/jobs"
+                      className={cn(
+                        "shrink-0 text-sm font-medium text-primary underline-offset-4 hover:underline",
+                      )}
+                    >
+                      Open jobs
+                    </Link>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <JobsSummaryStrip summary={jobsWorkflowSummary} className="mb-0" />
+                </CardContent>
+              </Card>
+            ) : null}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle>Decision velocity</CardTitle>

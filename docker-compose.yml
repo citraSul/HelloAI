@@ -1,5 +1,9 @@
 # Local Postgres for hirelens-web (Prisma). Optional if you already have Postgres.
 # Usage: docker compose up -d
+#
+# Flask is not defined here yet. If you run Next.js in Compose, set FLASK_BASE_URL to the
+# Flask service DNS name (e.g. http://hirelens-flask:8765), not http://127.0.0.1:8765.
+# See hirelens-web/docs/FLASK_PIPELINE_CONNECTIVITY.md
 services:
   postgres:
     image: postgres:16-alpine

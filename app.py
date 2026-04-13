@@ -5,6 +5,18 @@ from __future__ import annotations
 import json
 import os
 import secrets
+
+from pathlib import Path
+
+# Load repo `.env` when python-dotenv is installed (`pip install -r requirements.txt`).
+try:
+    from dotenv import load_dotenv
+
+    _env_path = Path(__file__).resolve().parent / ".env"
+    if _env_path.is_file():
+        load_dotenv(_env_path)
+except ImportError:
+    pass
 import sqlite3
 from datetime import UTC, datetime
 from functools import wraps
@@ -221,7 +233,8 @@ def inject_common():
 
 @app.route("/health")
 def health() -> tuple[dict[str, str], int]:
-    return {"status": "ok"}, 200
+    """Liveness for orchestrators and HireLens Next.js startup preflight."""
+    return {"status": "ok", "service": "hirelens-flask"}, 200
 
 
 @app.route("/release-readiness")

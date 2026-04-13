@@ -14,7 +14,7 @@ import { normalizedImpactMetricsSchema, type NormalizedImpactMetrics } from "@/l
 import { Download, Lock, RefreshCw, Sparkles, Wand2, Zap } from "lucide-react";
 
 type Opt = { id: string; label: string };
-type JobOpt = Opt & { title: string; company: string | null };
+type JobOpt = Opt & { title: string; company: string | null; source: string | null };
 
 type TailorMeta = {
   jobTitle: string;
@@ -356,6 +356,14 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
               <span className="font-medium">{selectedJob.title}</span>
               {selectedJob.company ? (
                 <span className="text-muted-foreground"> · {selectedJob.company}</span>
+              ) : null}
+              {selectedJob.source ? (
+                <span
+                  className="ml-2 inline-flex align-middle text-[11px] font-medium uppercase tracking-wide text-label"
+                  title="Imported from job feed"
+                >
+                  · {selectedJob.source}
+                </span>
               ) : null}
             </p>
           )}

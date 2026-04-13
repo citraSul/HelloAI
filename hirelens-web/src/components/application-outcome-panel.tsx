@@ -10,8 +10,13 @@ import type { outcomeStatusValues } from "@/lib/validators/outcome";
 
 type Status = (typeof outcomeStatusValues)[number];
 
-const QUICK: { label: string; status: Exclude<Status, "saved" | "archived"> }[] = [
-  { label: "Mark applied", status: "applied" },
+const TRACKING: { label: string; status: "saved" | "applied" | "skipped" }[] = [
+  { label: "Saved", status: "saved" },
+  { label: "Applied", status: "applied" },
+  { label: "Skipped", status: "skipped" },
+];
+
+const QUICK: { label: string; status: Exclude<Status, "saved" | "archived" | "applied" | "skipped"> }[] = [
   { label: "Mark response", status: "responded" },
   { label: "Mark interview", status: "interviewed" },
   { label: "Mark offer", status: "offered" },
@@ -65,20 +70,37 @@ export function ApplicationOutcomePanel({
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Application outcome</CardTitle>
         <p className="text-xs font-normal text-muted-foreground">
-          Tracking outcome for: <span className="font-medium text-foreground">{resumeTitle}</span>
+          Tracking for: <span className="font-medium text-foreground">{resumeTitle}</span> — saved / applied / skipped, then optional pipeline steps.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!local || local.status === "saved" ? (
-          <p className="text-sm text-muted-foreground">No outcome recorded yet — use the actions below when you move forward with this application.</p>
-        ) : null}
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-label">Your status</p>
+          <div className="flex flex-wrap gap-2">
+            {TRACKING.map(({ label, status: s }) => {
+              const active = (local?.status ?? "saved") === s;
+              return (
+                <Button
+                  key={s}
+                  type="button"
+                  variant={active ? "default" : "outline"}
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => updateStatus(s)}
+                >
+                  {label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-label">Status</span>
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <span className="text-xs font-medium text-label">Current</span>
           <OutcomeStatusBadge status={local?.status ?? "saved"} />
-          {lastUpdate && (
+          {lastUpdate ? (
             <span className="text-xs text-muted-foreground">Updated {lastUpdate}</span>
-          )}
+          ) : null}
         </div>
 
         {error && (
@@ -87,7 +109,9 @@ export function ApplicationOutcomePanel({
           </p>
         )}
 
-        <div className="flex flex-wrap gap-2">
+        <div>
+          <p className="mb-2 text-xs text-muted-foreground">If you applied, log progress:</p>
+          <div className="flex flex-wrap gap-2">
           {QUICK.map((q) => (
             <Button
               key={q.status}
@@ -109,6 +133,7 @@ export function ApplicationOutcomePanel({
           >
             Archive
           </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

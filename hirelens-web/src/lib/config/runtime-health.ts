@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { getAppMode, isRealMode } from "@/lib/config/app-mode";
-import { isFlaskPipelineEnabled } from "@/lib/flask/env";
+import { getFlaskPipelineConfigHealth, isFlaskPipelineEnabled } from "@/lib/flask/env";
 import { getTableCheckUserMessage } from "@/lib/db/prisma-errors";
 
 export type TableCheck = { name: string; ok: boolean; error?: string };
@@ -17,6 +17,16 @@ export type RuntimeHealthSnapshot = {
   pipelineWouldCallFlask: boolean;
   realModePipelineMismatch: boolean;
   realModeMismatchMessage?: string;
+  /** Resolved FLASK_BASE_URL — exact origin server-side fetch uses (not a secret). */
+  flaskPipelineBaseUrl: string | null;
+  flaskTargetHost: string | null;
+  flaskTargetPort: string | null;
+  /** True for 127.0.0.1 / localhost — OK for local dev; use service DNS from inside Docker. */
+  flaskTargetIsLoopback: boolean;
+  flaskRunningInDocker: boolean;
+  flaskDockerLoopbackMisconfig: boolean;
+  flaskUrlSyntaxError: string | null;
+  flaskPipelineConfigWarnings: string[];
 };
 
 const REQUIRED_TABLE_CHECKS: Array<{ name: string; check: () => Promise<unknown> }> = [
@@ -76,6 +86,8 @@ export async function getRuntimeHealthSnapshot(): Promise<RuntimeHealthSnapshot>
     ? "APP_MODE=real but Flask URL and/or internal API key are missing."
     : undefined;
 
+  const flaskCfg = getFlaskPipelineConfigHealth();
+
   return {
     appMode: getAppMode(),
     databaseUrlPresent,
@@ -88,5 +100,13 @@ export async function getRuntimeHealthSnapshot(): Promise<RuntimeHealthSnapshot>
     pipelineWouldCallFlask,
     realModePipelineMismatch,
     realModeMismatchMessage,
+    flaskPipelineBaseUrl: flaskCfg.normalizedBaseUrl,
+    flaskTargetHost: flaskCfg.connectionInfo?.host ?? null,
+    flaskTargetPort: flaskCfg.connectionInfo?.port ?? null,
+    flaskTargetIsLoopback: flaskCfg.connectionInfo?.isLoopback ?? false,
+    flaskRunningInDocker: flaskCfg.runningInDocker,
+    flaskDockerLoopbackMisconfig: flaskCfg.dockerLoopbackMisconfig,
+    flaskUrlSyntaxError: flaskCfg.urlSyntaxError,
+    flaskPipelineConfigWarnings: flaskCfg.pipelineConfigWarnings,
   };
 }

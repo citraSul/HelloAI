@@ -2,11 +2,16 @@ import { getPrismaUserMessage, isMissingTableError } from "@/lib/db/prisma-error
 
 /**
  * Runs once when the Node server starts (not in Edge).
- * Surfaces schema/DB issues early in development instead of failing mid-request.
+ * Flask preflight runs whenever APP_MODE=real + pipeline env is set (all environments).
+ * Prisma checks run in development only.
  */
 export async function register() {
-  if (process.env.NODE_ENV !== "development") return;
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  const { runFlaskHealthPreflight } = await import("@/lib/flask/startup-check");
+  await runFlaskHealthPreflight();
+
+  if (process.env.NODE_ENV !== "development") return;
 
   const { prisma } = await import("@/lib/db/prisma");
 

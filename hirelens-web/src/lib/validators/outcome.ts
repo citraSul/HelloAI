@@ -7,6 +7,7 @@ export const outcomeStatusValues = [
   "interviewed",
   "offered",
   "rejected",
+  "skipped",
   "archived",
 ] as const;
 

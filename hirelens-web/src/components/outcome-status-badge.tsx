@@ -10,6 +10,7 @@ const LABEL: Record<OutcomeStatus, string> = {
   interviewed: "Interview",
   offered: "Offer",
   rejected: "Rejected",
+  skipped: "Skipped",
   archived: "Archived",
 };
 
@@ -19,11 +20,13 @@ export function OutcomeStatusBadge({ status }: { status: OutcomeStatus }) {
       ? "border-score-success/50 bg-score-success/15 text-score-success"
       : status === "rejected"
         ? "border-score-danger/50 bg-score-danger/10 text-score-danger"
-        : status === "interviewed" || status === "responded"
-          ? "border-primary/40 bg-primary/10 text-primary"
-          : status === "applied"
-            ? "border-border bg-muted/50 text-foreground"
-            : "border-border bg-muted/30 text-muted-foreground";
+        : status === "skipped"
+          ? "border-border bg-muted/40 text-muted-foreground"
+          : status === "interviewed" || status === "responded"
+            ? "border-primary/40 bg-primary/10 text-primary"
+            : status === "applied"
+              ? "border-border bg-muted/50 text-foreground"
+              : "border-border bg-muted/30 text-muted-foreground";
 
   return (
     <span

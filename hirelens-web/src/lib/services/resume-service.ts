@@ -32,5 +32,35 @@ export async function uploadResume(input: {
     },
   });
 
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { primaryResumeId: true },
+  });
+  if (user && !user.primaryResumeId) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { primaryResumeId: resume.id },
+    });
+  }
+
   return resume;
+}
+
+export async function setPrimaryResumeForUser(
+  resumeId: string,
+  explicitUserId?: string,
+): Promise<{ ok: true }> {
+  const userId = await resolveUserId(explicitUserId);
+  const resume = await prisma.resume.findFirst({
+    where: { id: resumeId, userId },
+    select: { id: true },
+  });
+  if (!resume) {
+    throw new Error("Resume not found");
+  }
+  await prisma.user.update({
+    where: { id: userId },
+    data: { primaryResumeId: resumeId },
+  });
+  return { ok: true };
 }

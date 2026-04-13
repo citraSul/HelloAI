@@ -7,3 +7,9 @@ export const resumeUploadSchema = z.object({
 });
 
 export type ResumeUploadInput = z.infer<typeof resumeUploadSchema>;
+
+export const resumeSetPrimarySchema = z.object({
+  resumeId: z.string().cuid(),
+});
+
+export type ResumeSetPrimaryInput = z.infer<typeof resumeSetPrimarySchema>;

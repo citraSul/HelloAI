@@ -1,13 +1,20 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
 import Link from "next/link";
 
 type ResumeOpt = { id: string; title: string };
+
+/** Dedupes auto-score across React Strict Mode double-invoke and stray re-renders (per job+resume per session). */
+const autoScoreAttemptedKeys = new Set<string>();
+
+function autoScoreKey(jobId: string, resumeId: string) {
+  return `${jobId}\0${resumeId}`;
+}
 
 /**
  * Resume selector + Score match, URL-synced via ?resumeId= so reload/share keep context.
@@ -16,11 +23,17 @@ export function JobDetailResumePanel({
   jobId,
   resumes,
   selectedResumeId,
+  primaryResumeId,
+  autoScoreIfMissing = false,
 }: {
   jobId: string;
   resumes: ResumeOpt[];
   /** From URL (server-validated) — must match a row in `resumes`. */
   selectedResumeId: string;
+  /** User default when opening a job without `?resumeId=` (shown in copy and option labels). */
+  primaryResumeId?: string | null;
+  /** When true, POST /api/match/score once on load if there is no stored match yet (server-derived). */
+  autoScoreIfMissing?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,8 +50,8 @@ export function JobDetailResumePanel({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const runScore = useCallback(async () => {
-    if (!resumeId) return;
+  const runScore = useCallback(async (): Promise<boolean> => {
+    if (!resumeId) return false;
     setLoading(true);
     setError(null);
     setSuccess(false);
@@ -52,19 +65,35 @@ export function JobDetailResumePanel({
       if (!res.ok) throw new Error(data.error ?? res.statusText);
       setSuccess(true);
       router.refresh();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Score failed");
+      return false;
     } finally {
       setLoading(false);
     }
   }, [resumeId, jobId, router]);
+
+  useEffect(() => {
+    if (!autoScoreIfMissing || !resumeId) return;
+    const key = autoScoreKey(jobId, resumeId);
+    if (autoScoreAttemptedKeys.has(key)) return;
+    autoScoreAttemptedKeys.add(key);
+    void runScore().then((ok) => {
+      if (!ok) autoScoreAttemptedKeys.delete(key);
+    });
+  }, [autoScoreIfMissing, jobId, resumeId, runScore]);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Score match</CardTitle>
         <p className="text-sm font-normal text-muted-foreground">
-          Uses the resume selected below — same context as the application decision card.
+          Uses the resume selected below — same context as the application decision card. Your primary resume is
+          chosen first when you open a job without a resume in the URL; you can switch anytime below.
+          {autoScoreIfMissing
+            ? " A first score runs automatically when you open this page if none exists yet."
+            : null}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -80,6 +109,7 @@ export function JobDetailResumePanel({
             {resumes.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.title}
+                {primaryResumeId && r.id === primaryResumeId ? " (primary)" : ""}
               </option>
             ))}
           </select>
@@ -87,7 +117,11 @@ export function JobDetailResumePanel({
         {error && <p className="text-sm text-score-danger">{error}</p>}
         {success && !error && <p className="text-sm text-score-success">Match saved. Updating…</p>}
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <Button disabled={loading || !resumeId} onClick={runScore} className="w-full sm:w-auto">
+          <Button
+            disabled={loading || !resumeId}
+            onClick={() => void runScore()}
+            className="w-full sm:w-auto"
+          >
             {loading ? "Scoring…" : "Score match"}
           </Button>
           <Link

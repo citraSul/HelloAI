@@ -1,3 +1,5 @@
+import { parseFlaskBaseUrl } from "@/lib/flask/url-validation";
+
 /**
  * Single source of truth for local vs pipeline-backed behavior.
  *
@@ -29,13 +31,20 @@ export function isFlaskEnvConfigured(): boolean {
 
 /**
  * In REAL mode, pipeline must be configured; otherwise scoring/tailor/impact throw with a clear message.
+ * Also validates FLASK_BASE_URL shape (origin-only http/https) when set.
  */
 export function assertRealModePipelineConfigured(): void {
   if (!isRealMode()) return;
-  if (isFlaskEnvConfigured()) return;
-  throw new Error(
-    "APP_MODE=real requires FLASK_BASE_URL and HIRELENS_INTERNAL_API_KEY. Set them in .env.local or use APP_MODE=mock for local development without Flask.",
-  );
+  if (!isFlaskEnvConfigured()) {
+    throw new Error(
+      "APP_MODE=real requires FLASK_BASE_URL and HIRELENS_INTERNAL_API_KEY. Set them in .env.local or use APP_MODE=mock for local development without Flask.",
+    );
+  }
+  const raw = process.env.FLASK_BASE_URL?.trim() ?? "";
+  const p = parseFlaskBaseUrl(raw);
+  if (!p.ok) {
+    throw new Error(`APP_MODE=real: invalid FLASK_BASE_URL — ${p.message}`);
+  }
 }
 
 export function getAppModeLabel(): string {

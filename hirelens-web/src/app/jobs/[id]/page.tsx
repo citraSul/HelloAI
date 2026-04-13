@@ -11,6 +11,7 @@ import { JobDetailNoResumeCta, JobDetailResumePanel } from "@/components/job-det
 import { DecisionSummaryCard } from "@/components/decision-summary-card";
 import { ApplicationOutcomePanel } from "@/components/application-outcome-panel";
 import { getOutcomeForJobResume } from "@/lib/services/application-outcome-service";
+import { defaultResumeIdFromList, orderResumesPrimaryFirst } from "@/lib/resume-default";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,9 @@ export default async function JobDetailPage({
 
   let job: Awaited<ReturnType<typeof prisma.job.findFirst>>;
   let resumes: Array<{ id: string; title: string }>;
+  let primaryResumeId: string | null = null;
   try {
-    [job, resumes] = await Promise.all([
+    [job, resumes, primaryResumeId] = await Promise.all([
       prisma.job.findFirst({
         where: { id, userId },
       }),
@@ -41,16 +43,26 @@ export default async function JobDetailPage({
         orderBy: { updatedAt: "desc" },
         take: 50,
       }),
+      prisma.user
+        .findUnique({
+          where: { id: userId },
+          select: { primaryResumeId: true },
+        })
+        .then((u) => u?.primaryResumeId ?? null),
     ]);
   } catch {
     job = null;
     resumes = [];
+    primaryResumeId = null;
   }
 
   if (!job) notFound();
 
   let effectiveResumeId: string | null = null;
   let selectedTitle: string | null = null;
+
+  const defaultResumeId = defaultResumeIdFromList(resumes, primaryResumeId);
+  const resumesForUi = orderResumesPrimaryFirst(resumes, primaryResumeId);
 
   if (resumes.length === 0) {
     effectiveResumeId = null;
@@ -59,8 +71,8 @@ export default async function JobDetailPage({
     if (valid) {
       effectiveResumeId = valid.id;
       selectedTitle = valid.title;
-    } else {
-      redirect(`/jobs/${id}?resumeId=${encodeURIComponent(resumes[0].id)}`);
+    } else if (defaultResumeId) {
+      redirect(`/jobs/${id}?resumeId=${encodeURIComponent(defaultResumeId)}`);
     }
   }
 
@@ -97,6 +109,8 @@ export default async function JobDetailPage({
   const analyzed = job.analyzedJson as Record<string, unknown> | null;
   const breakdown = matchForResume?.breakdown;
 
+  const hasFeedMeta = Boolean(job.source || job.applyUrl || job.fetchedAt);
+
   return (
     <AppShell title={job.title}>
       <PageHeader
@@ -104,12 +118,43 @@ export default async function JobDetailPage({
         description={job.company ? `${job.company}` : "Job detail, match signal, and role analysis."}
       />
 
+      {hasFeedMeta ? (
+        <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-4 text-sm">
+          {job.source ? (
+            <span className="inline-flex items-center rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-label">
+              Feed: {job.source}
+            </span>
+          ) : null}
+          {job.applyUrl ? (
+            <a
+              href={job.applyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Open original listing
+            </a>
+          ) : null}
+          {job.fetchedAt ? (
+            <span className="text-muted-foreground">
+              Imported {new Date(job.fetchedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1">
           {resumes.length === 0 ? (
             <JobDetailNoResumeCta />
           ) : (
-            <JobDetailResumePanel jobId={job.id} resumes={resumes} selectedResumeId={effectiveResumeId!} />
+            <JobDetailResumePanel
+              jobId={job.id}
+              resumes={resumesForUi}
+              primaryResumeId={primaryResumeId}
+              selectedResumeId={effectiveResumeId!}
+              autoScoreIfMissing={!matchForResume}
+            />
           )}
         </div>
         <div className="w-full shrink-0 lg:w-[360px]">
@@ -151,8 +196,9 @@ export default async function JobDetailPage({
       ) : (
         <Card className="mb-8">
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            No match score for <span className="font-medium text-foreground">{selectedTitle}</span> yet. Use{" "}
-            <span className="font-medium text-foreground">Score match</span> above for this resume.
+            No match score for <span className="font-medium text-foreground">{selectedTitle}</span> yet. A first
+            score is requested automatically when you open this page; if nothing appears shortly, use{" "}
+            <span className="font-medium text-foreground">Score match</span> above.
           </CardContent>
         </Card>
       )}
