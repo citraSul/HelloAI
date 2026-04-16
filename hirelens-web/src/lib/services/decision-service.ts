@@ -1,5 +1,11 @@
+import type { DecisionAnalysis } from "@prisma/client";
 import type { NormalizedImpactMetrics } from "@/lib/types/impact-metrics";
-import type { DecisionOutput } from "@/lib/types/decision";
+import type {
+  DecisionConfidence,
+  DecisionOutput,
+  DecisionProvenance,
+  DecisionRecommendation,
+} from "@/lib/types/decision";
 import { prisma } from "@/lib/db/prisma";
 import { getPrismaUserMessage, isMissingTableError } from "@/lib/db/prisma-errors";
 import { normalizeImpactMetrics } from "@/lib/services/normalize-impact-metrics";
@@ -408,7 +414,25 @@ export async function loadDecisionForResumeJob(
     }
   }
 
+  const latestPersisted = await prisma.decisionAnalysis.findFirst({
+    where: { userId, jobId, resumeId },
+    orderBy: { createdAt: "desc" },
+  });
+
   const opts: BuildDecisionOptions | undefined = resumeTitle ? { resumeTitle } : undefined;
+
+  if (
+    latestPersisted &&
+    latestMatch &&
+    isPersistedDecisionAligned(latestPersisted, latestMatch.id, impactMetricId)
+  ) {
+    return {
+      decision: decisionAnalysisRowToOutput(latestPersisted),
+      matchAnalysisId: latestMatch.id,
+      impactMetricId,
+      tailoredResumeId: tailored?.id ?? null,
+    };
+  }
 
   if (!latestMatch) {
     return {
@@ -518,4 +542,135 @@ export function quickApplyGuidanceFromMatch(
   if (p >= 72) return { label: "Apply", tone: "success" };
   if (p < 48) return { label: "Skip", tone: "danger" };
   return { label: "Consider", tone: "warning" };
+}
+
+function jsonToStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((x) => (x == null ? "" : String(x))).filter((s) => s.length > 0);
+}
+
+function coerceRecommendation(raw: string): DecisionRecommendation {
+  const s = raw.trim().toLowerCase();
+  if (s === "apply" || s === "maybe" || s === "skip") return s;
+  return "maybe";
+}
+
+function coerceConfidence(raw: string): DecisionConfidence {
+  const s = raw.trim().toLowerCase();
+  if (s === "high" || s === "medium" || s === "low") return s;
+  return "medium";
+}
+
+function coerceProvenance(raw: string): DecisionProvenance {
+  const s = raw.trim().toLowerCase();
+  if (s === "none" || s === "match_only" || s === "match_and_impact") return s;
+  return "match_only";
+}
+
+/** Rehydrate a stored row into the same shape the UI / engine use (no recompute). */
+export function decisionAnalysisRowToOutput(row: DecisionAnalysis): DecisionOutput {
+  return {
+    recommendation: coerceRecommendation(row.recommendation),
+    confidence: coerceConfidence(row.confidence),
+    decision_score: row.decisionScore,
+    reasons: jsonToStringArray(row.reasons),
+    risks: jsonToStringArray(row.risks),
+    summary: row.summary,
+    provenance: coerceProvenance(row.provenance),
+  };
+}
+
+/** True when this persisted row still matches current match + impact pointers. */
+export function isPersistedDecisionAligned(
+  persisted: Pick<DecisionAnalysis, "matchAnalysisId" | "impactMetricId">,
+  latestMatchId: string | null,
+  currentImpactMetricId: string | null,
+): boolean {
+  if (!latestMatchId || persisted.matchAnalysisId !== latestMatchId) return false;
+  return (persisted.impactMetricId ?? null) === (currentImpactMetricId ?? null);
+}
+
+function listGuidanceFromRecommendation(rec: DecisionRecommendation): {
+  label: "Apply" | "Consider" | "Skip";
+  tone: "success" | "warning" | "danger";
+} {
+  if (rec === "apply") return { label: "Apply", tone: "success" };
+  if (rec === "skip") return { label: "Skip", tone: "danger" };
+  return { label: "Consider", tone: "warning" };
+}
+
+/**
+ * Jobs list guidance when evidence supports a tier (match and/or impact via existing `buildDecision`).
+ * `null` = insufficient signals for a defensible Apply / Consider / Skip — use an explicit “other” bucket, not a fake chip.
+ */
+export type ListApplyGuidance = {
+  label: "Apply" | "Consider" | "Skip";
+  tone: "success" | "warning" | "danger";
+  trust: {
+    confidence: DecisionConfidence;
+    /** True when there is no match analysis row; label comes from impact-only `buildDecision` output. */
+    inferredWithoutMatch: boolean;
+  };
+};
+
+/** Sort tier for feed ranking — must stay in sync with `listApplyGuidanceFromDecisionOrMatch` labels. */
+export function feedTierFromListGuidance(
+  g: { label: "Apply" | "Consider" | "Skip" } | null,
+): number {
+  if (!g) return 0;
+  if (g.label === "Apply") return 3;
+  if (g.label === "Consider") return 2;
+  return 1;
+}
+
+/**
+ * Jobs list badge: prefer latest persisted DecisionAnalysis when it matches current match + impact;
+ * otherwise the same `buildDecision` path as job detail (match + optional impact for this job).
+ */
+export function listApplyGuidanceFromDecisionOrMatch(
+  latestMatch:
+    | { id: string; matchScore: number; verdict: string; breakdown: unknown }
+    | null
+    | undefined,
+  persisted: DecisionAnalysis | null | undefined,
+  currentImpactMetricId: string | null,
+  impact: NormalizedImpactMetrics | null,
+): ListApplyGuidance | null {
+  if (
+    latestMatch &&
+    persisted &&
+    isPersistedDecisionAligned(persisted, latestMatch.id, currentImpactMetricId)
+  ) {
+    const g = listGuidanceFromRecommendation(coerceRecommendation(persisted.recommendation));
+    return {
+      ...g,
+      trust: {
+        confidence: coerceConfidence(persisted.confidence),
+        inferredWithoutMatch: false,
+      },
+    };
+  }
+  if (latestMatch) {
+    const matchSlice: MatchSlice = {
+      id: latestMatch.id,
+      matchScore: latestMatch.matchScore,
+      verdict: latestMatch.verdict,
+      breakdown: latestMatch.breakdown,
+    };
+    const d = buildDecision({ match: matchSlice, impact }, undefined);
+    const g = listGuidanceFromRecommendation(d.recommendation);
+    return {
+      ...g,
+      trust: { confidence: d.confidence, inferredWithoutMatch: false },
+    };
+  }
+  if (!impact) {
+    return null;
+  }
+  const d = buildDecision({ match: null, impact }, undefined);
+  const g = listGuidanceFromRecommendation(d.recommendation);
+  return {
+    ...g,
+    trust: { confidence: d.confidence, inferredWithoutMatch: true },
+  };
 }

@@ -8,8 +8,8 @@ import { resolveUserId } from "@/lib/services/user";
 import { getDashboardOutcomeSnapshot } from "@/lib/services/application-outcome-service";
 import { fetchJobsListBundle } from "@/lib/services/jobs-list-bundle";
 import {
+  buildJobsFeedSummaryRows,
   computeJobsListSummary,
-  jobsFromBundleToSummaryRows,
   type JobsListSummary,
 } from "@/lib/jobs-list-summary";
 import { JobsSummaryStrip } from "@/components/jobs-summary-strip";
@@ -153,8 +153,17 @@ export default async function DashboardPage() {
   let jobsWorkflowSummary: JobsListSummary | null = null;
   if (overview && userId && !usingSample) {
     try {
-      const { jobs, statusByJob } = await fetchJobsListBundle(userId);
-      jobsWorkflowSummary = computeJobsListSummary(jobsFromBundleToSummaryRows(jobs, statusByJob));
+      const { jobs, statusByJob, latestDecisionByJob, impactMetricIdByJob, normalizedImpactByJob } =
+        await fetchJobsListBundle(userId);
+      jobsWorkflowSummary = computeJobsListSummary(
+        buildJobsFeedSummaryRows(
+          jobs,
+          statusByJob,
+          latestDecisionByJob,
+          impactMetricIdByJob,
+          normalizedImpactByJob,
+        ),
+      );
     } catch {
       jobsWorkflowSummary = null;
     }
@@ -206,8 +215,8 @@ export default async function DashboardPage() {
                     <div className="min-w-0">
                       <CardTitle>Job workflow</CardTitle>
                       <p className="mt-1 text-xs font-normal text-muted-foreground">
-                        Same metrics as the Jobs page summary — latest match per role and tracking on your default
-                        resume (max 50).
+                        Same metrics as the Jobs page summary — match + decision hints and tracking for your feed
+                        resume (primary or default), max 50 roles after ranking.
                       </p>
                     </div>
                     <Link

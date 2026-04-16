@@ -1,9 +1,15 @@
-import { quickApplyGuidanceFromMatch } from "@/lib/services/decision-service";
 import { cn } from "@/lib/utils/cn";
 
-/** Apply / Consider / Skip hint for a job list row (uses latest match score + verdict). */
-export function DecisionListBadge({ matchScore, verdict }: { matchScore: number; verdict: string }) {
-  const { label, tone } = quickApplyGuidanceFromMatch(matchScore, verdict);
+export type DecisionListTone = "success" | "warning" | "danger";
+
+/** Apply / Consider / Skip for a job list row (label computed server-side for list/detail alignment). */
+export function DecisionListBadge({
+  label,
+  tone,
+}: {
+  label: "Apply" | "Consider" | "Skip";
+  tone: DecisionListTone;
+}) {
   return (
     <span
       className={cn(

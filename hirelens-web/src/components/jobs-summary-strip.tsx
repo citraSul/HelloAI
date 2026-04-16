@@ -41,7 +41,7 @@ export function JobsSummaryStrip({
         <StatCell
           label="Apply-worthy"
           value={summary.applyWorthy}
-          hint="Latest match → Apply"
+          hint="Apply on list (saved decision or match)"
           accent="success"
         />
         <StatCell label="Applied" value={summary.applied} hint="Tracked: applied" />
@@ -49,8 +49,8 @@ export function JobsSummaryStrip({
         <StatCell label="In pipeline" value={summary.inPipeline} hint="Past first steps" />
       </div>
       <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-        Apply-worthy uses the same guidance as list badges. Tracking counts use your primary (or default) resume per
-        job.
+        Apply-worthy uses the same Apply / Consider / Skip rule as job rows (saved decision when still current,
+        otherwise match). Same feed resume as the Jobs page. Tracking uses that resume per job.
       </p>
     </div>
   );

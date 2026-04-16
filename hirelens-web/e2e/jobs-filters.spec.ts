@@ -23,6 +23,8 @@ test.describe("jobs filters", () => {
 
     await expect(page.locator("#jobs-search")).toBeVisible();
     await expect(page.getByLabel("Search")).toBeVisible();
+    await expect(page.locator("#jobs-sort")).toBeVisible();
+    await expect(page.getByLabel("List order")).toBeVisible();
     await expect(page.locator("#jobs-score-filter")).toBeVisible();
     await expect(page.getByLabel("Match status")).toBeVisible();
     await expect(page.locator("#jobs-decision-filter")).toBeVisible();

@@ -1,11 +1,13 @@
-import type { ApplicationOutcomeStatus } from "@prisma/client";
-import { quickApplyGuidanceFromMatch } from "@/lib/services/decision-service";
+import type { ApplicationOutcomeStatus, DecisionAnalysis } from "@prisma/client";
+import { listApplyGuidanceFromDecisionOrMatch } from "@/lib/services/decision-service";
 import { PIPELINE_TRACKING_STATUSES } from "@/lib/jobs-tracking-buckets";
 import type { JobWithLatestForList } from "@/lib/services/jobs-list-bundle";
+import type { NormalizedImpactMetrics } from "@/lib/types/impact-metrics";
 
 export type JobsRowForSummary = {
-  latest: { matchScore: number; verdict: string } | null;
   trackingStatus: ApplicationOutcomeStatus | null;
+  /** Apply / Consider / Skip — same source as list badges; null when no defensible tier. */
+  decisionListLabel: "Apply" | "Consider" | "Skip" | null;
 };
 
 export type JobsListSummary = {
@@ -16,21 +18,40 @@ export type JobsListSummary = {
   inPipeline: number;
 };
 
-/** Maps `/jobs` bundle rows to summary inputs (same shape as list VM fields used for counts). */
-export function jobsFromBundleToSummaryRows(
+/** Summary rows aligned with jobs list decision badges (persisted when current, else match). */
+export function buildJobsFeedSummaryRows(
   jobs: JobWithLatestForList[],
   statusByJob: Map<string, ApplicationOutcomeStatus>,
+  latestDecisionByJob: Map<string, DecisionAnalysis>,
+  impactMetricIdByJob: Map<string, string | null>,
+  normalizedImpactByJob: Map<string, NormalizedImpactMetrics | null>,
 ): JobsRowForSummary[] {
   return jobs.map((job) => {
     const latest = job.matchAnalyses[0];
+    const persisted = latestDecisionByJob.get(job.id);
+    const impactId = impactMetricIdByJob.get(job.id) ?? null;
+    const impact = normalizedImpactByJob.get(job.id) ?? null;
+    const g = listApplyGuidanceFromDecisionOrMatch(
+      latest
+        ? {
+            id: latest.id,
+            matchScore: latest.matchScore,
+            verdict: latest.verdict,
+            breakdown: latest.breakdown,
+          }
+        : null,
+      persisted,
+      impactId,
+      impact,
+    );
     return {
-      latest: latest ? { matchScore: latest.matchScore, verdict: latest.verdict } : null,
       trackingStatus: statusByJob.get(job.id) ?? null,
+      decisionListLabel: g?.label ?? null,
     };
   });
 }
 
-/** Counts align with jobs list row VM: decision from latest match; tracking from default resume. */
+/** Counts align with jobs list badges and tracking for the feed resume. */
 export function computeJobsListSummary(rows: JobsRowForSummary[]): JobsListSummary {
   let applyWorthy = 0;
   let applied = 0;
@@ -38,10 +59,7 @@ export function computeJobsListSummary(rows: JobsRowForSummary[]): JobsListSumma
   let inPipeline = 0;
 
   for (const row of rows) {
-    if (row.latest) {
-      const { label } = quickApplyGuidanceFromMatch(row.latest.matchScore, row.latest.verdict);
-      if (label === "Apply") applyWorthy++;
-    }
+    if (row.decisionListLabel === "Apply") applyWorthy++;
     const s = row.trackingStatus;
     if (s === "applied") applied++;
     if (s === "skipped") skipped++;
