@@ -21,6 +21,7 @@ const sampleSummary = {
   succeeded: 2,
   failed: 0,
   errors: [] as { source: string; externalId: string; message: string }[],
+  sourceErrors: [] as { source: string; message: string }[],
 };
 
 describe("POST /api/jobs/ingest", () => {

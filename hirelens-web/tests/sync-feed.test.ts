@@ -9,6 +9,10 @@ vi.mock("@/lib/services/job-ingestion", () => ({
   upsertJobFromFeed: vi.fn(),
 }));
 
+vi.mock("@/lib/services/ingest-operational-log", () => ({
+  persistIngestOperationalLog: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { ingestJobs } from "@/lib/jobs/ingest";
 import { upsertJobFromFeed } from "@/lib/services/job-ingestion";
 import { syncJobsFromFeeds } from "@/lib/jobs/sync-feed";
@@ -50,6 +54,7 @@ describe("syncJobsFromFeeds", () => {
         sameSourceDropped: 2,
         crossSourceDropped: 0,
       },
+      sourceErrors: [],
     });
 
     vi.mocked(upsertJobFromFeed)
@@ -72,6 +77,7 @@ describe("syncJobsFromFeeds", () => {
     expect(s.errors).toEqual([
       { source: "adzuna", externalId: "3", message: "db down" },
     ]);
+    expect(s.sourceErrors).toEqual([]);
     expect(vi.mocked(upsertJobFromFeed)).toHaveBeenCalledTimes(2);
   });
 });

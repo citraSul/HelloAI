@@ -89,8 +89,8 @@ export function JobDetailResumePanel({
       <CardHeader>
         <CardTitle className="text-base">Score match</CardTitle>
         <p className="text-sm font-normal text-muted-foreground">
-          Uses the resume selected below — same context as the application decision card. Your primary resume is
-          chosen first when you open a job without a resume in the URL; you can switch anytime below.
+          Match % comes from the resume selected below — same resume as the HireLens recommendation card. Your primary
+          resume is chosen first when you open a job without a resume in the URL; switch anytime.
           {autoScoreIfMissing
             ? " A first score runs automatically when you open this page if none exists yet."
             : null}
@@ -115,7 +115,12 @@ export function JobDetailResumePanel({
           </select>
         </div>
         {error && <p className="text-sm text-score-danger">{error}</p>}
-        {success && !error && <p className="text-sm text-score-success">Match saved. Updating…</p>}
+        {success && !error && (
+          <p className="text-sm text-score-success">
+            Match score updated for this resume. Recommendation is recalculated from the new match signal. Tailored
+            resume text and impact metrics were not changed.
+          </p>
+        )}
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <Button
             disabled={loading || !resumeId}

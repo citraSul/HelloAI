@@ -10,8 +10,6 @@ export type UpsertJobFromFeedInput = {
   source: string;
   externalId: string;
   applyUrl?: string;
-  /** Same optional override as `analyzeJob` / other job services. */
-  userId?: string;
 };
 
 /** Trim and normalize line endings for storage as `Job.rawDescription`. */
@@ -39,7 +37,7 @@ export async function upsertJobFromFeed(input: UpsertJobFromFeedInput): Promise<
     throw new Error("upsertJobFromFeed: description is empty after normalization");
   }
 
-  const userId = await resolveUserId(input.userId);
+  const userId = await resolveUserId();
   const analyzedJson = (await analyzeJobMock(rawDescription)) as object;
   const company = input.company?.trim() ? input.company.trim() : null;
   const applyUrl = input.applyUrl?.trim() ? input.applyUrl.trim() : null;

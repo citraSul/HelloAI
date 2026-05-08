@@ -173,7 +173,7 @@ export default async function DashboardPage() {
     <AppShell title="Dashboard">
       <PageHeader
         title="Overview"
-        description="HireLens summarizes your pipeline, match quality, and recent agent activity in one calm view."
+        description="Snapshot of pipeline scale, match runs, tailoring, and outcomes. For prioritized next steps, use Jobs; for funnel charts, use Analytics."
       >
         <Link
           href="/jobs"
@@ -241,10 +241,10 @@ export default async function DashboardPage() {
               <CardContent className="grid gap-4 sm:grid-cols-3">
                 <HeroStat label="Active pipeline jobs" value={String(overview.activeJobs)} />
                 <HeroStat
-                  label="Average fit signal"
+                  label="Avg match % (account)"
                   value={overview.avgMatchScore === 0 ? "—" : `${Math.round(overview.avgMatchScore * 100)}%`}
                 />
-                <HeroStat label="High-confidence opportunities" value={String(highMatchJobs)} />
+                <HeroStat label="Strong-match jobs (≥72%)" value={String(highMatchJobs)} />
               </CardContent>
             </Card>
 
@@ -257,7 +257,7 @@ export default async function DashboardPage() {
                 value={overview.avgMatchScore === 0 ? "—" : `${Math.round(overview.avgMatchScore * 100)}%`}
               />
               <MetricCard
-                label="Avg impact score"
+                label="Avg tailored impact"
                 value={avgImpactScore === 0 ? "—" : `${Math.round(avgImpactScore)}%`}
               />
             </div>
@@ -377,10 +377,12 @@ export default async function DashboardPage() {
               </CardHeader>
               <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
                 <p>
-                  Prioritize roles where match scores stay above your personal baseline — fewer applications, better
-                  outcomes.
+                  Prioritize roles where match % stays above your personal baseline — fewer applications, clearer focus.
                 </p>
-                <p>Use Tailor when a score is close but not quite: small edits often move the needle without noise.</p>
+                <p>
+                  Use Tailor when match signal is close: small edits paired with Evaluate impact can shift tailored-impact
+                  and the persisted recommendation after you Score match on the job page.
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -410,7 +412,7 @@ function MetricCard({ label, value }: { label: string; value: string }) {
     <Card>
       <CardHeader className="pb-2">
         <p className="text-xs font-medium text-label">{label}</p>
-        <p className="pt-1 text-2xl font-bold tabular-nums text-foreground">{value}</p>
+        <p className="pt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{value}</p>
       </CardHeader>
     </Card>
   );
@@ -418,9 +420,9 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border px-4 py-3">
+    <div className="rounded-xl border border-border/55 bg-muted/[0.06] px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
       <p className="text-xs font-medium text-label">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{value}</p>
+      <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight text-foreground">{value}</p>
     </div>
   );
 }

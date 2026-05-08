@@ -9,6 +9,7 @@ export function DevModeBanner() {
 
   const mode = getAppMode();
   const flaskReady = isFlaskEnvConfigured();
+  const demoAuth = process.env.ALLOW_ANONYMOUS_DEMO === "1";
 
   return (
     <div className="border-b border-border bg-muted/30 px-6 py-2 text-center text-[11px] text-muted-foreground md:px-8">
@@ -17,6 +18,14 @@ export function DevModeBanner() {
       <span>
         APP_MODE=<span className="font-mono text-foreground">{mode}</span>
       </span>
+      {demoAuth && (
+        <>
+          <span className="mx-2 text-border">·</span>
+          <span>
+            Auth: <span className="font-mono text-foreground">demo user</span> when not signed in
+          </span>
+        </>
+      )}
       {mode === "real" && (
         <>
           <span className="mx-2 text-border">·</span>

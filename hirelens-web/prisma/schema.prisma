@@ -20,10 +20,19 @@ enum ApplicationOutcomeStatus {
   archived
 }
 
+enum IdentityTokenKind {
+  password_reset
+  email_verify
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String?
+  /** bcrypt hash; null for legacy/demo rows until password is set */
+  passwordHash String?
+  /** Set when the user completes email verification (signup). */
+  emailVerifiedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -31,6 +40,7 @@ model User {
   primaryResumeId String? @unique
   primaryResume   Resume? @relation("UserPrimaryResume", fields: [primaryResumeId], references: [id], onDelete: SetNull)
 
+  identityTokens       IdentityToken[]
   resumes              Resume[]
   jobs                 Job[]
   matchAnalyses        MatchAnalysis[]
@@ -39,6 +49,22 @@ model User {
   decisionAnalyses     DecisionAnalysis[]
   agentRuns            AgentRun[]
   applicationOutcomes ApplicationOutcome[]
+}
+
+/** One-time hashed tokens for password reset and email verification (raw token only in email/link). */
+model IdentityToken {
+  id        String            @id @default(cuid())
+  userId    String
+  kind      IdentityTokenKind
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash, kind])
+  @@index([userId, kind])
 }
 
 model Resume {
@@ -213,4 +239,32 @@ model AgentRun {
 
   @@index([userId])
   @@index([agentName])
+}
+
+/** Append-only log for POST /api/jobs/ingest (cron) — operational trust, not user-facing analytics. */
+model IngestOperationalLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  /** True when sync finished without throwing (partial upsert failures still count as success). */
+  success      Boolean
+  durationMs   Int?
+  fetched      Int @default(0)
+  valid        Int @default(0)
+  skipped      Int @default(0)
+  succeeded    Int @default(0)
+  failed       Int @default(0)
+  ingestRawMerged          Int?
+  ingestAfterSameSource    Int?
+  ingestAfterCrossSource   Int?
+  ingestSameSourceDropped  Int?
+  ingestCrossSourceDropped Int?
+
+  errorMessage       String? @db.Text
+  /** Feed fetch failures: [{ "source": "adzuna", "message": "..." }] */
+  sourceErrors       Json?
+  /** First rows of per-job upsert failures */
+  upsertErrorsPreview Json?
+
+  @@index([createdAt])
 }

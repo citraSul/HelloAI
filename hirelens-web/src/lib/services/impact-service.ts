@@ -7,8 +7,8 @@ import { prisma } from "@/lib/db/prisma";
 import { normalizeImpactMetrics } from "@/lib/services/normalize-impact-metrics";
 import { resolveUserId } from "@/lib/services/user";
 
-export async function evaluateImpact(input: { tailoredResumeId: string; userId?: string }) {
-  const userId = await resolveUserId(input.userId);
+export async function evaluateImpact(input: { tailoredResumeId: string }) {
+  const userId = await resolveUserId();
 
   const tailored = await prisma.tailoredResume.findFirst({
     where: { id: input.tailoredResumeId, userId },

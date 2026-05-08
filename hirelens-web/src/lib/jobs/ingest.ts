@@ -13,12 +13,22 @@ export type IngestDedupeStats = {
   crossSourceDropped: number;
 };
 
+export type IngestSourceError = {
+  source: string;
+  message: string;
+};
+
 export type IngestJobsResult = {
   jobs: NormalizedJob[];
   dedupe: IngestDedupeStats;
+  /** Feed fetch failures (source still contributes 0 rows; does not abort other sources). */
+  sourceErrors: IngestSourceError[];
 };
 
-const sources: JobSourceFetcher[] = [fetchAdzunaJobs, fetchRemoteOkJobs];
+const NAMED_SOURCES: { id: string; fetch: JobSourceFetcher }[] = [
+  { id: "adzuna", fetch: fetchAdzunaJobs },
+  { id: "remoteok", fetch: fetchRemoteOkJobs },
+];
 
 function dedupeBySourceAndExternalId(jobs: NormalizedJob[]): NormalizedJob[] {
   const seen = new Set<string>();
@@ -98,13 +108,16 @@ function dedupeCrossSource(jobs: NormalizedJob[]): NormalizedJob[] {
 
 export async function ingestJobs(): Promise<IngestJobsResult> {
   const merged: NormalizedJob[] = [];
+  const sourceErrors: IngestSourceError[] = [];
 
-  for (const fetchJobs of sources) {
+  for (const { id, fetch: fetchJobs } of NAMED_SOURCES) {
     try {
       const batch = await fetchJobs();
       merged.push(...batch);
     } catch (e) {
-      console.error("[ingestJobs] source failed:", e instanceof Error ? e.message : e);
+      const message = e instanceof Error ? e.message : String(e);
+      console.error("[ingestJobs] source failed:", id, message);
+      sourceErrors.push({ source: id, message });
     }
   }
 
@@ -123,5 +136,6 @@ export async function ingestJobs(): Promise<IngestJobsResult> {
       sameSourceDropped: rawMerged - afterSameSource,
       crossSourceDropped: afterSameSource - afterCrossSource,
     },
+    sourceErrors,
   };
 }

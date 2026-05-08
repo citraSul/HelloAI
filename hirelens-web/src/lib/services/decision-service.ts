@@ -353,11 +353,68 @@ export function buildDecision(
   };
 }
 
+/** Read-only sync hints for Job Detail — does not change decision computation. */
+export type JobDetailDecisionSync = {
+  displaySource: "persisted_aligned" | "computed_live";
+  provenance: DecisionProvenance;
+  hasTailoredVersion: boolean;
+  hasImpactForActiveTailored: boolean;
+  /** Latest tailored draft was saved after the newest impact row for that draft — impact signals may lag the text. */
+  impactStaleVsLatestTailor: boolean;
+  /** A stored DecisionAnalysis existed but ids didn’t match current match/impact — UI shows fresh compute. */
+  supersededPersistedDecision: boolean;
+  /** ISO timestamps for freshness row — same sources as existing loaders, no extra queries. */
+  matchScoredAt: string | null;
+  tailoredSavedAt: string | null;
+  impactEvaluatedAt: string | null;
+  /** When the aligned DecisionAnalysis row was created (persisted_aligned only). */
+  decisionSavedAt: string | null;
+  /** When a decision row exists but was not used for this view (superseded / recomputed). */
+  supersededDecisionSavedAt: string | null;
+};
+
+function iso(d: Date | null | undefined): string | null {
+  if (!d || Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function buildJobDetailSync(input: {
+  usedPersistedAligned: boolean;
+  decision: DecisionOutput;
+  impactMetricId: string | null;
+  impactCreatedAt: Date | null;
+  tailored: { id: string; updatedAt: Date } | null;
+  hadPersistedRow: boolean;
+  matchCreatedAt: Date | null;
+  latestPersistedCreatedAt: Date | null;
+}): JobDetailDecisionSync {
+  const { decision, tailored, impactCreatedAt, impactMetricId } = input;
+  const persistedIso = iso(input.latestPersistedCreatedAt);
+  return {
+    displaySource: input.usedPersistedAligned ? "persisted_aligned" : "computed_live",
+    provenance: decision.provenance,
+    hasTailoredVersion: tailored != null,
+    hasImpactForActiveTailored: impactMetricId != null,
+    impactStaleVsLatestTailor: Boolean(
+      tailored && impactCreatedAt && tailored.updatedAt > impactCreatedAt,
+    ),
+    supersededPersistedDecision: input.hadPersistedRow && !input.usedPersistedAligned,
+    matchScoredAt: iso(input.matchCreatedAt),
+    tailoredSavedAt: iso(tailored?.updatedAt),
+    impactEvaluatedAt: iso(input.impactCreatedAt),
+    decisionSavedAt: input.usedPersistedAligned ? persistedIso : null,
+    supersededDecisionSavedAt:
+      !input.usedPersistedAligned && input.hadPersistedRow ? persistedIso : null,
+  };
+}
+
 export type LoadedDecisionContext = {
   decision: DecisionOutput;
   matchAnalysisId: string | null;
   impactMetricId: string | null;
   tailoredResumeId: string | null;
+  /** Present when a resume is selected; clarifies persisted vs live decision for trust UX. */
+  sync: JobDetailDecisionSync | null;
 };
 
 /** Job Detail: decision for a specific resume, or empty-library state when resumeId is null. */
@@ -373,6 +430,7 @@ export async function loadDecisionForJobDetail(
       matchAnalysisId: null,
       impactMetricId: null,
       tailoredResumeId: null,
+      sync: null,
     };
   }
   return loadDecisionForResumeJob(userId, jobId, resumeId, undefined, resumeTitle ?? undefined);
@@ -403,6 +461,7 @@ export async function loadDecisionForResumeJob(
 
   let impact: NormalizedImpactMetrics | null = null;
   let impactMetricId: string | null = null;
+  let impactCreatedAt: Date | null = null;
   if (tailored) {
     const im = await prisma.impactMetric.findFirst({
       where: { userId, tailoredResumeId: tailored.id },
@@ -411,6 +470,7 @@ export async function loadDecisionForResumeJob(
     if (im) {
       impact = normalizeImpactMetrics(im.metrics);
       impactMetricId = im.id;
+      impactCreatedAt = im.createdAt;
     }
   }
 
@@ -418,6 +478,7 @@ export async function loadDecisionForResumeJob(
     where: { userId, jobId, resumeId },
     orderBy: { createdAt: "desc" },
   });
+  const hadPersistedRow = Boolean(latestPersisted);
 
   const opts: BuildDecisionOptions | undefined = resumeTitle ? { resumeTitle } : undefined;
 
@@ -426,20 +487,42 @@ export async function loadDecisionForResumeJob(
     latestMatch &&
     isPersistedDecisionAligned(latestPersisted, latestMatch.id, impactMetricId)
   ) {
+    const decision = decisionAnalysisRowToOutput(latestPersisted);
     return {
-      decision: decisionAnalysisRowToOutput(latestPersisted),
+      decision,
       matchAnalysisId: latestMatch.id,
       impactMetricId,
       tailoredResumeId: tailored?.id ?? null,
+      sync: buildJobDetailSync({
+        usedPersistedAligned: true,
+        decision,
+        impactMetricId,
+        impactCreatedAt,
+        tailored,
+        hadPersistedRow,
+        matchCreatedAt: latestMatch.createdAt,
+        latestPersistedCreatedAt: latestPersisted.createdAt,
+      }),
     };
   }
 
   if (!latestMatch) {
+    const decision = buildDecision({ match: null, impact }, opts);
     return {
-      decision: buildDecision({ match: null, impact }, opts),
+      decision,
       matchAnalysisId: null,
       impactMetricId,
       tailoredResumeId: tailored?.id ?? null,
+      sync: buildJobDetailSync({
+        usedPersistedAligned: false,
+        decision,
+        impactMetricId,
+        impactCreatedAt,
+        tailored,
+        hadPersistedRow,
+        matchCreatedAt: null,
+        latestPersistedCreatedAt: latestPersisted?.createdAt ?? null,
+      }),
     };
   }
 
@@ -450,11 +533,22 @@ export async function loadDecisionForResumeJob(
     breakdown: latestMatch.breakdown,
   };
 
+  const decision = buildDecision({ match: matchSlice, impact }, opts);
   return {
-    decision: buildDecision({ match: matchSlice, impact }, opts),
+    decision,
     matchAnalysisId: latestMatch.id,
     impactMetricId,
     tailoredResumeId: tailored?.id ?? null,
+    sync: buildJobDetailSync({
+      usedPersistedAligned: false,
+      decision,
+      impactMetricId,
+      impactCreatedAt,
+      tailored,
+      hadPersistedRow,
+      matchCreatedAt: latestMatch.createdAt,
+      latestPersistedCreatedAt: latestPersisted?.createdAt ?? null,
+    }),
   };
 }
 
@@ -463,9 +557,8 @@ export async function evaluateAndMaybePersistDecision(input: {
   resumeId: string;
   tailoredResumeId?: string | null;
   persist?: boolean;
-  userId?: string;
 }): Promise<LoadedDecisionContext> {
-  const userId = await resolveUserId(input.userId);
+  const userId = await resolveUserId();
   const resumeRow = await prisma.resume.findFirst({
     where: { id: input.resumeId, userId },
     select: { title: true },

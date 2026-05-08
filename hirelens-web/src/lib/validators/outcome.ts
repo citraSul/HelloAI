@@ -16,7 +16,6 @@ export const outcomeUpdateSchema = z.object({
   resumeId: z.string().cuid(),
   status: z.enum(outcomeStatusValues),
   notes: z.string().max(5000).optional(),
-  userId: z.string().cuid().optional(),
 });
 
 export type OutcomeUpdateInput = z.infer<typeof outcomeUpdateSchema>;

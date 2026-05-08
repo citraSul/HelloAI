@@ -20,6 +20,19 @@ describe("ingestJobs", () => {
     vi.mocked(fetchRemoteOkJobs).mockReset();
   });
 
+  it("records sourceErrors when a feed throws without blocking the other source", async () => {
+    vi.mocked(fetchAdzunaJobs).mockRejectedValue(new Error("adzuna down"));
+    vi.mocked(fetchRemoteOkJobs).mockResolvedValue([
+      { title: "R1", description: body("c"), source: "remoteok", externalId: "1" },
+    ]);
+
+    const { jobs, sourceErrors } = await ingestJobs();
+
+    expect(sourceErrors).toEqual([{ source: "adzuna", message: "adzuna down" }]);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.source).toBe("remoteok");
+  });
+
   it("calls both sources, merges results, and dedupes by source+externalId", async () => {
     vi.mocked(fetchAdzunaJobs).mockResolvedValue([
       {

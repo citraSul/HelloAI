@@ -1,5 +1,6 @@
-import { ingestJobs } from "@/lib/jobs/ingest";
+import { type IngestSourceError, ingestJobs } from "@/lib/jobs/ingest";
 import { upsertJobFromFeed } from "@/lib/services/job-ingestion";
+import { persistIngestOperationalLog } from "@/lib/services/ingest-operational-log";
 
 export type JobFeedSyncError = {
   source: string;
@@ -29,6 +30,8 @@ export type JobFeedSyncSummary = {
   /** Failed upserts (each recorded in `errors`). */
   failed: number;
   errors: JobFeedSyncError[];
+  /** Feed providers that threw during fetch (see `ingestJobs`). */
+  sourceErrors: IngestSourceError[];
 };
 
 /**
@@ -36,54 +39,74 @@ export type JobFeedSyncSummary = {
  * One bad row does not abort the batch.
  */
 export async function syncJobsFromFeeds(): Promise<JobFeedSyncSummary> {
-  const { jobs: items, dedupe } = await ingestJobs();
-  const fetched = items.length;
+  const started = Date.now();
+  try {
+    const { jobs: items, dedupe, sourceErrors } = await ingestJobs();
+    const fetched = items.length;
 
-  const errors: JobFeedSyncError[] = [];
-  let skipped = 0;
-  let succeeded = 0;
-  let failed = 0;
+    const errors: JobFeedSyncError[] = [];
+    let skipped = 0;
+    let succeeded = 0;
+    let failed = 0;
 
-  for (const job of items) {
-    if (!job.description.trim()) {
-      skipped += 1;
-      continue;
+    for (const job of items) {
+      if (!job.description.trim()) {
+        skipped += 1;
+        continue;
+      }
+
+      try {
+        await upsertJobFromFeed({
+          title: job.title,
+          company: job.company,
+          description: job.description,
+          source: job.source,
+          externalId: job.externalId,
+          applyUrl: job.applyUrl,
+        });
+        succeeded += 1;
+      } catch (e) {
+        failed += 1;
+        const message = e instanceof Error ? e.message : String(e);
+        errors.push({
+          source: job.source,
+          externalId: job.externalId,
+          message,
+        });
+      }
     }
 
-    try {
-      await upsertJobFromFeed({
-        title: job.title,
-        company: job.company,
-        description: job.description,
-        source: job.source,
-        externalId: job.externalId,
-        applyUrl: job.applyUrl,
-      });
-      succeeded += 1;
-    } catch (e) {
-      failed += 1;
-      const message = e instanceof Error ? e.message : String(e);
-      errors.push({
-        source: job.source,
-        externalId: job.externalId,
-        message,
-      });
-    }
+    const valid = succeeded + failed;
+
+    const summary: JobFeedSyncSummary = {
+      fetched,
+      ingestRawMerged: dedupe.rawMerged,
+      ingestAfterSameSource: dedupe.afterSameSource,
+      ingestAfterCrossSource: dedupe.afterCrossSource,
+      ingestSameSourceDropped: dedupe.sameSourceDropped,
+      ingestCrossSourceDropped: dedupe.crossSourceDropped,
+      valid,
+      skipped,
+      succeeded,
+      failed,
+      errors,
+      sourceErrors,
+    };
+
+    await persistIngestOperationalLog({
+      success: true,
+      durationMs: Date.now() - started,
+      summary,
+    });
+
+    return summary;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    await persistIngestOperationalLog({
+      success: false,
+      durationMs: Date.now() - started,
+      errorMessage: message,
+    });
+    throw e;
   }
-
-  const valid = succeeded + failed;
-
-  return {
-    fetched,
-    ingestRawMerged: dedupe.rawMerged,
-    ingestAfterSameSource: dedupe.afterSameSource,
-    ingestAfterCrossSource: dedupe.afterCrossSource,
-    ingestSameSourceDropped: dedupe.sameSourceDropped,
-    ingestCrossSourceDropped: dedupe.crossSourceDropped,
-    valid,
-    skipped,
-    succeeded,
-    failed,
-    errors,
-  };
 }

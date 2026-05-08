@@ -23,5 +23,10 @@ export default defineConfig({
     // Reuse `npm run dev` on :3000 when already running (avoids EADDRINUSE when CI=true locally).
     reuseExistingServer: true,
     timeout: 120_000,
+    env: {
+      ...process.env,
+      ALLOW_ANONYMOUS_DEMO: "1",
+      AUTH_SECRET: process.env.AUTH_SECRET ?? "playwright-dev-auth-secret-min-32-chars!!",
+    },
   },
 });

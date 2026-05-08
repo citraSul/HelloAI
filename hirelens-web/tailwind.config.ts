@@ -43,8 +43,10 @@ const config: Config = {
         label: "#6B7280",
       },
       boxShadow: {
-        card: "0 1px 3px 0 rgb(0 0 0 / 0.28)",
-        "brand-soft": "0 0 32px rgba(99, 102, 241, 0.12)",
+        card:
+          "0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px -4px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.045)",
+        "card-lift": "0 20px 48px -20px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04) inset",
+        "brand-soft": "0 0 56px rgba(99, 102, 241, 0.15), 0 0 1px rgba(99, 102, 241, 0.25)",
       },
       borderRadius: {
         xl: "16px",

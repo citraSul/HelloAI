@@ -54,7 +54,7 @@ test.describe("jobs filters", () => {
       { timeout: 10_000 },
     );
 
-    await expect(page.locator("main ul.space-y-3 li").first()).toBeVisible();
+    await expect(page.locator('main ul[class*="space-y-3"] li').first()).toBeVisible();
   });
 
   test("match status filter updates URL (unscored)", async ({ page }) => {
@@ -67,11 +67,11 @@ test.describe("jobs filters", () => {
       { timeout: 10_000 },
     );
 
-    const hasRows = await page.locator("main ul.space-y-3 li").count();
+    const hasRows = await page.locator('main ul[class*="space-y-3"] li').count();
     const emptyFiltered = page.getByRole("heading", { name: "No matching jobs" });
 
     if (hasRows > 0) {
-      await expect(page.locator("main ul.space-y-3 li").first()).toBeVisible();
+      await expect(page.locator('main ul[class*="space-y-3"] li').first()).toBeVisible();
     } else {
       await expect(emptyFiltered).toBeVisible();
     }

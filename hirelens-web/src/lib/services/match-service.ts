@@ -6,8 +6,8 @@ import { matchScoreToUnit, normalizeMatchComponents, normalizeVerdict } from "@/
 import { prisma } from "@/lib/db/prisma";
 import { resolveUserId } from "@/lib/services/user";
 
-export async function scoreMatch(input: { resumeId: string; jobId: string; userId?: string }) {
-  const userId = await resolveUserId(input.userId);
+export async function scoreMatch(input: { resumeId: string; jobId: string }) {
+  const userId = await resolveUserId();
 
   const [resume, job] = await Promise.all([
     prisma.resume.findFirst({ where: { id: input.resumeId, userId } }),

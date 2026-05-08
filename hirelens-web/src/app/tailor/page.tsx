@@ -13,10 +13,10 @@ export default function TailorPage() {
     <AppShell title="Tailor" fullWidth>
       <PageHeader
         title="Tailoring studio"
-        description="Select a resume and job, then score, tailor, and evaluate impact — side by side for clarity."
+        description="One resume and one job: compare original vs tailored text, then run Evaluate impact for tailored-impact metrics. The studio shows a live decision preview; job detail keeps the persisted recommendation after you run Score match there."
       />
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-6 md:p-8">
           <Suspense
             fallback={
               <div className="space-y-4 py-2" aria-hidden>

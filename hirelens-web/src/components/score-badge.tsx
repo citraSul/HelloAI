@@ -22,6 +22,7 @@ export function ScoreBadge({ score, verdict }: { score: number; verdict: string 
         "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors duration-200",
         tone,
       )}
+      title="Saved match run: % and scoring verdict — not the same as Apply / Consider / Skip on the left."
     >
       {pct}% · {verdict}
     </span>

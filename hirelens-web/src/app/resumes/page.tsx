@@ -107,7 +107,7 @@ export default async function ResumesPage() {
     <AppShell title="Resumes">
       <PageHeader
         title="Resume library"
-        description="Uploaded resumes and parsed profile snapshots. The primary resume is used first on job pages when no resume is in the URL."
+        description="Uploaded resumes and parsed profile snapshots. Your primary resume drives the Jobs feed ranking, summary counts, and default selection when you open a job without ?resumeId=."
       />
       <div className="mb-8">
         <ResumeCreateForm />

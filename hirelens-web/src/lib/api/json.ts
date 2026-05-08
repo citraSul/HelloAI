@@ -10,6 +10,13 @@ export function jsonError(message: string, status = 400, details?: unknown) {
   return NextResponse.json({ error: message, details }, { status });
 }
 
+export function jsonRateLimited(retryAfterSec: number) {
+  return NextResponse.json(
+    { error: "Too many requests" },
+    { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
+  );
+}
+
 export function jsonFromZod(e: ZodError) {
   return jsonError("Validation failed", 422, e.flatten());
 }
@@ -31,6 +38,9 @@ export function jsonFromServiceError(e: unknown, notFoundHint = "not found") {
   }
   console.error(e);
   const msg = e instanceof Error ? e.message : "Request failed";
+  if (msg === "Unauthorized") {
+    return jsonError("Unauthorized", 401);
+  }
   const status = msg.toLowerCase().includes(notFoundHint.toLowerCase()) ? 404 : 500;
   return jsonError(msg, status);
 }

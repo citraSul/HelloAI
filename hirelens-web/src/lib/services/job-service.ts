@@ -6,9 +6,8 @@ export async function analyzeJob(input: {
   title: string;
   company?: string;
   rawDescription: string;
-  userId?: string;
 }) {
-  const userId = await resolveUserId(input.userId);
+  const userId = await resolveUserId();
   const analyzed = await analyzeJobMock(input.rawDescription);
 
   const job = await prisma.job.create({

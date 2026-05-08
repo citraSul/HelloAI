@@ -25,8 +25,8 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-border bg-surface">
-      <div className="flex h-16 items-center border-b border-border px-5">
+    <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r border-border/70 bg-surface/95 backdrop-blur-sm">
+      <div className="flex h-16 items-center border-b border-border/60 px-5">
         <Link
           href="/dashboard"
           className="group relative text-xl font-bold tracking-tight transition-opacity duration-200 hover:opacity-95"
@@ -41,7 +41,7 @@ export function AppSidebar() {
           />
         </Link>
       </div>
-      <nav className="flex flex-1 flex-col gap-1 p-3" aria-label="Main">
+      <nav className="flex flex-1 flex-col gap-0.5 p-3" aria-label="Main">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
@@ -51,8 +51,8 @@ export function AppSidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
                 active
-                  ? "bg-primary/12 text-primary shadow-[inset_0_0_0_1px_rgba(99,102,241,0.25)]"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  ? "bg-primary/[0.14] text-primary shadow-[inset_0_0_0_1px_rgba(99,102,241,0.22)]"
+                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
               )}
             >
               <Icon className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
@@ -61,8 +61,8 @@ export function AppSidebar() {
           );
         })}
       </nav>
-      <div className="border-t border-border p-4 text-xs leading-relaxed text-label">
-        <span className="font-semibold text-muted-foreground">HireLens</span> — calm, data-first job decisions.
+      <div className="border-t border-border/60 p-4 text-[11px] leading-relaxed text-label">
+        <span className="font-medium text-muted-foreground">HireLens</span> — calm, data-first job decisions.
       </div>
     </aside>
   );

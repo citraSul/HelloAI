@@ -39,11 +39,11 @@ function extractTailoringMeta(raw: unknown): { changeLog: TailorChangeEntry[]; w
   return { changeLog, warnings: warnings ?? [] };
 }
 
-export async function tailorResume(input: { resumeId: string; jobId: string; userId?: string }): Promise<{
+export async function tailorResume(input: { resumeId: string; jobId: string }): Promise<{
   tailored: TailoredResume;
   meta: TailorResultMeta;
 }> {
-  const userId = await resolveUserId(input.userId);
+  const userId = await resolveUserId();
 
   const [resume, job] = await Promise.all([
     prisma.resume.findFirst({ where: { id: input.resumeId, userId } }),

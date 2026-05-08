@@ -18,7 +18,7 @@ export function AppShell({
       <div className="flex min-h-screen flex-col">
         <TopNavbar title={title} />
         <DevModeBanner />
-        <main className="flex-1 px-6 py-8 md:px-8">
+        <main className="flex-1 px-6 py-9 md:px-10 md:py-12">
           <div className={fullWidth ? "w-full max-w-none" : "mx-auto max-w-7xl"}>{children}</div>
         </main>
       </div>

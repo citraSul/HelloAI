@@ -70,7 +70,8 @@ export function ApplicationOutcomePanel({
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Application outcome</CardTitle>
         <p className="text-xs font-normal text-muted-foreground">
-          Tracking for: <span className="font-medium text-foreground">{resumeTitle}</span> — saved / applied / skipped, then optional pipeline steps.
+          Real outcomes for: <span className="font-medium text-foreground">{resumeTitle}</span> — separate from match %
+          and the Apply / Consider / Skip hint. Log saved → applied or skipped, then optional pipeline steps.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -43,6 +43,10 @@ export type JobsFeedBundle = {
   impactMetricIdByJob: Map<string, string | null>;
   /** Normalized impact for the same row as `impactMetricIdByJob` (or null). */
   normalizedImpactByJob: Map<string, NormalizedImpactMetrics | null>;
+  /** Latest tailored draft timestamp for feed resume per job. */
+  tailoredUpdatedAtByJob: Map<string, Date | null>;
+  /** Latest impact evaluation timestamp tied to latest tailored draft per job. */
+  impactEvaluatedAtByJob: Map<string, Date | null>;
 };
 
 async function loadDecisionImpactMaps(
@@ -53,6 +57,8 @@ async function loadDecisionImpactMaps(
     latestDecisionByJob: Map<string, DecisionAnalysis>;
     impactMetricIdByJob: Map<string, string | null>;
     normalizedImpactByJob: Map<string, NormalizedImpactMetrics | null>;
+    tailoredUpdatedAtByJob: Map<string, Date | null>;
+    impactEvaluatedAtByJob: Map<string, Date | null>;
   },
 ): Promise<void> {
   if (jobIds.length === 0) return;
@@ -73,8 +79,12 @@ async function loadDecisionImpactMaps(
   }
 
   const tailoredByJob = new Map<string, string>();
+  const tailoredUpdatedAtByJob = new Map<string, Date>();
   for (const t of tailoredRows) {
-    if (!tailoredByJob.has(t.jobId)) tailoredByJob.set(t.jobId, t.id);
+    if (!tailoredByJob.has(t.jobId)) {
+      tailoredByJob.set(t.jobId, t.id);
+      tailoredUpdatedAtByJob.set(t.jobId, t.updatedAt);
+    }
   }
   const tailoredIds = [...new Set(tailoredByJob.values())];
   if (tailoredIds.length > 0) {
@@ -93,11 +103,15 @@ async function loadDecisionImpactMaps(
       const row = tid ? latestImByTailored.get(tid) : undefined;
       into.impactMetricIdByJob.set(jid, row?.id ?? null);
       into.normalizedImpactByJob.set(jid, row ? normalizeImpactMetrics(row.metrics) : null);
+      into.tailoredUpdatedAtByJob.set(jid, tailoredUpdatedAtByJob.get(jid) ?? null);
+      into.impactEvaluatedAtByJob.set(jid, row?.createdAt ?? null);
     }
   } else {
     for (const jid of jobIds) {
       into.impactMetricIdByJob.set(jid, null);
       into.normalizedImpactByJob.set(jid, null);
+      into.tailoredUpdatedAtByJob.set(jid, tailoredUpdatedAtByJob.get(jid) ?? null);
+      into.impactEvaluatedAtByJob.set(jid, null);
     }
   }
 }
@@ -169,6 +183,8 @@ export async function fetchJobsListBundle(
   const latestDecisionByJob = new Map<string, DecisionAnalysis>();
   const impactMetricIdByJob = new Map<string, string | null>();
   const normalizedImpactByJob = new Map<string, NormalizedImpactMetrics | null>();
+  const tailoredUpdatedAtByJob = new Map<string, Date | null>();
+  const impactEvaluatedAtByJob = new Map<string, Date | null>();
 
   const needsPoolDecisions = sort === "fit" && Boolean(feedResumeId) && jobIds.length > 0;
   if (needsPoolDecisions) {
@@ -176,6 +192,8 @@ export async function fetchJobsListBundle(
       latestDecisionByJob,
       impactMetricIdByJob,
       normalizedImpactByJob,
+      tailoredUpdatedAtByJob,
+      impactEvaluatedAtByJob,
     });
   }
 
@@ -214,6 +232,8 @@ export async function fetchJobsListBundle(
       latestDecisionByJob,
       impactMetricIdByJob,
       normalizedImpactByJob,
+      tailoredUpdatedAtByJob,
+      impactEvaluatedAtByJob,
     });
   }
 
@@ -238,5 +258,7 @@ export async function fetchJobsListBundle(
     latestDecisionByJob,
     impactMetricIdByJob,
     normalizedImpactByJob,
+    tailoredUpdatedAtByJob,
+    impactEvaluatedAtByJob,
   };
 }

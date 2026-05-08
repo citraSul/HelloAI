@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DECISION_TRIAD_READABLE, recommendationDisplayLabel } from "@/lib/decision-ui-labels";
 import type { DecisionOutput } from "@/lib/types/decision";
 import { cn } from "@/lib/utils/cn";
 
@@ -30,9 +31,19 @@ function confMeaning(c: DecisionOutput["confidence"]) {
   return "Current evidence is weak; proceed only with strong strategic reasons.";
 }
 
+function certaintyIntro(provenance: DecisionOutput["provenance"]) {
+  if (provenance === "none") {
+    return "Provisional until you run Score match for this job and resume.";
+  }
+  if (provenance === "match_only") {
+    return "Certainty draws on match rules only; tailored impact is not in this evaluation yet.";
+  }
+  return "Certainty uses match plus tailored impact for this resume and job.";
+}
+
 export function DecisionSummaryCard({
   decision,
-  title = "Application decision",
+  title = "Action recommendation",
   resumeTitle,
 }: {
   decision: DecisionOutput;
@@ -43,23 +54,23 @@ export function DecisionSummaryCard({
   const provNote =
     decision.provenance === "none"
       ? resumeTitle
-        ? "Run Score match to produce a fit score for the selected resume."
-        : "Create a resume in the library, then run Score match to tie apply / maybe / skip guidance to that profile."
+        ? "Run Score match to produce a match % for the selected resume."
+        : `Create a resume in the library, then run Score match to tie ${DECISION_TRIAD_READABLE} guidance to that profile.`
       : decision.provenance === "match_only"
-        ? "apply / maybe / skip from match scoring only — tailored impact not evaluated yet for this pair."
-        : "apply / maybe / skip using match plus tailored impact for this resume and job.";
+        ? `${DECISION_TRIAD_READABLE} from match scoring only — tailored impact not evaluated yet for this pair.`
+        : `${DECISION_TRIAD_READABLE} using match plus tailored impact for this resume and job.`;
 
   return (
-    <Card className="border-primary/25 bg-gradient-to-b from-primary/[0.07] to-card">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">{title}</CardTitle>
+    <Card className="border-primary/35 bg-gradient-to-b from-primary/[0.1] via-card to-card shadow-brand-soft ring-primary/15">
+      <CardHeader className="space-y-2.5 pb-3">
+        <CardTitle className="text-lg tracking-[-0.02em]">{title}</CardTitle>
         {resumeTitle ? (
           <p className="text-xs font-medium leading-relaxed text-foreground/95">
             Based on resume: <span className="text-foreground">{resumeTitle}</span>
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Create a resume in the library to tie apply / maybe / skip guidance to a specific profile.
+            Create a resume in the library to tie {DECISION_TRIAD_READABLE} guidance to a specific profile.
           </p>
         )}
         <p className="text-xs font-normal leading-relaxed text-muted-foreground">{provNote}</p>
@@ -71,21 +82,44 @@ export function DecisionSummaryCard({
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={cn(
-              "rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide",
+              "rounded-full border px-3 py-1 text-sm font-semibold tracking-tight",
               recStyles(decision.recommendation),
             )}
           >
-            {decision.recommendation}
+            {recommendationDisplayLabel(decision.recommendation)}
           </span>
-          <span className={cn("text-sm font-medium capitalize", confStyles(decision.confidence))}>
-            {decision.confidence} confidence
-          </span>
-          {decision.decision_score != null && (
-            <span className="tabular-nums text-sm text-label">Score {Math.round(decision.decision_score)}</span>
-          )}
         </div>
-        <p className="text-sm leading-relaxed text-foreground/95">{decision.summary}</p>
-        <p className="text-xs leading-relaxed text-muted-foreground">{confMeaning(decision.confidence)}</p>
+        <div
+          className={cn(
+            "space-y-1.5 rounded-xl border px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+            decision.confidence === "low"
+              ? "border-score-warning/35 bg-score-warning/[0.06]"
+              : "border-border/55 bg-muted/[0.12]",
+          )}
+        >
+          <p className="text-xs font-medium uppercase tracking-wide text-label">Recommendation certainty</p>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            How strong the evidence is for {DECISION_TRIAD_READABLE.toLowerCase()} — not your headline match %.
+          </p>
+          <p className="text-sm leading-snug text-foreground/95">
+            <span className={cn("font-semibold capitalize", confStyles(decision.confidence))}>
+              {decision.confidence}
+            </span>
+            <span className="text-muted-foreground"> — {confMeaning(decision.confidence)}</span>
+          </p>
+          <p className="text-[11px] leading-snug text-muted-foreground">{certaintyIntro(decision.provenance)}</p>
+        </div>
+        {decision.decision_score != null && (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground/90">Engine blend</span>{" "}
+            <span className="tabular-nums text-foreground/90">{Math.round(decision.decision_score)}</span>
+            <span>
+              {" "}
+              — internal blend score for this recommendation; not the headline match % under Match signal.
+            </span>
+          </p>
+        )}
+        <p className="text-[15px] leading-relaxed text-foreground/95">{decision.summary}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-label">Top reasons</p>
@@ -118,11 +152,19 @@ export function DecisionSummaryCard({
 /** Compact block for Tailoring Studio (under decision signal). */
 export function DecisionEngineCompact({ decision }: { decision: DecisionOutput }) {
   return (
-    <div className="rounded-xl border border-primary/25 bg-primary/[0.06] p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-label">Decision engine</p>
+    <div className="rounded-xl border border-primary/25 bg-primary/[0.06] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <p className="text-xs font-medium uppercase tracking-wide text-label">Decision preview (studio)</p>
+      <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+        Live read while you work — job detail may differ until you score there again after tailoring.
+      </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase", recStyles(decision.recommendation))}>
-          {decision.recommendation}
+        <span
+          className={cn(
+            "rounded-full px-2.5 py-0.5 text-xs font-semibold tracking-tight",
+            recStyles(decision.recommendation),
+          )}
+        >
+          {recommendationDisplayLabel(decision.recommendation)}
         </span>
         <span className={cn("text-xs font-medium capitalize", confStyles(decision.confidence))}>{decision.confidence}</span>
       </div>

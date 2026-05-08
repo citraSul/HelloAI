@@ -2,8 +2,8 @@ import { prisma } from "@/lib/db/prisma";
 import type { DashboardOverview } from "@/types";
 import { resolveUserId } from "@/lib/services/user";
 
-export async function getDashboardOverview(userId?: string): Promise<DashboardOverview> {
-  const uid = await resolveUserId(userId);
+export async function getDashboardOverview(): Promise<DashboardOverview> {
+  const uid = await resolveUserId();
 
   const [jobCount, resumeCount, analyses, lastRun] = await Promise.all([
     prisma.job.count({ where: { userId: uid } }),

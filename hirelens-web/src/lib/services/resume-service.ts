@@ -5,9 +5,8 @@ import { resolveUserId } from "@/lib/services/user";
 export async function uploadResume(input: {
   title: string;
   rawText: string;
-  userId?: string;
 }) {
-  const userId = await resolveUserId(input.userId);
+  const userId = await resolveUserId();
   const parsed = await parseResumeMock(input.rawText);
 
   const resume = await prisma.resume.create({
@@ -46,11 +45,8 @@ export async function uploadResume(input: {
   return resume;
 }
 
-export async function setPrimaryResumeForUser(
-  resumeId: string,
-  explicitUserId?: string,
-): Promise<{ ok: true }> {
-  const userId = await resolveUserId(explicitUserId);
+export async function setPrimaryResumeForUser(resumeId: string): Promise<{ ok: true }> {
+  const userId = await resolveUserId();
   const resume = await prisma.resume.findFirst({
     where: { id: resumeId, userId },
     select: { id: true },

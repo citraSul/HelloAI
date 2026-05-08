@@ -8,8 +8,8 @@ export async function POST(req: Request) {
     const parsed = outcomeUpdateSchema.safeParse(body);
     if (!parsed.success) return jsonFromZod(parsed.error);
 
-    const { jobId, resumeId, status, notes, userId } = parsed.data;
-    const outcome = await upsertApplicationOutcome({ jobId, resumeId, status, notes, userId });
+    const { jobId, resumeId, status, notes } = parsed.data;
+    const outcome = await upsertApplicationOutcome({ jobId, resumeId, status, notes });
     return jsonOk({ outcome });
   } catch (e) {
     console.error(e);

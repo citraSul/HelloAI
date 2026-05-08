@@ -84,13 +84,12 @@ export async function getOutcomeForJobResume(
 }
 
 export async function upsertApplicationOutcome(input: {
-  userId?: string;
   jobId: string;
   resumeId: string;
   status: ApplicationOutcomeStatus;
   notes?: string;
 }): Promise<ApplicationOutcomeDTO> {
-  const userId = await resolveUserId(input.userId);
+  const userId = await resolveUserId();
   await assertJobResumeOwned(userId, input.jobId, input.resumeId);
 
   const [latestTailored, latestDecision, existing] = await Promise.all([

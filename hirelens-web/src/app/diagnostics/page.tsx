@@ -3,8 +3,37 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getRuntimeHealthSnapshot } from "@/lib/config/runtime-health";
 import { isFlaskPipelineEnabled } from "@/lib/flask/env";
+import { probeFlaskHealthForDiagnostics } from "@/lib/operational/flask-reachability";
+import { getIngestOperationalTrustSnapshot } from "@/lib/services/ingest-operational-log";
 
 export const dynamic = "force-dynamic";
+
+function formatWhen(dt: Date | null | undefined): string {
+  if (!dt) return "—";
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(dt);
+}
+
+function SourceErrorsBlock({ raw }: { raw: unknown }) {
+  const list = Array.isArray(raw) ? raw : [];
+  if (list.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-score-warning/30 bg-score-warning/5 px-3 py-2">
+      <p className="text-[11px] font-medium text-score-warning">Feed source failures (last run)</p>
+      <ul className="mt-1 list-inside list-disc text-xs text-muted-foreground">
+        {list.map((item, i) => {
+          const o = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+          const src = String(o.source ?? "unknown");
+          const msg = String(o.message ?? "");
+          return (
+            <li key={i}>
+              <span className="font-mono text-foreground">{src}</span>: {msg}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 function StatusRow({ label, ok, detail }: { label: string; ok: boolean; detail?: string }) {
   return (
@@ -19,7 +48,11 @@ function StatusRow({ label, ok, detail }: { label: string; ok: boolean; detail?:
 }
 
 export default async function DiagnosticsPage() {
-  const health = await getRuntimeHealthSnapshot();
+  const [health, ingestTrust, flaskLive] = await Promise.all([
+    getRuntimeHealthSnapshot(),
+    getIngestOperationalTrustSnapshot(),
+    probeFlaskHealthForDiagnostics(),
+  ]);
   const pipelineActive = isFlaskPipelineEnabled();
 
   return (
@@ -30,6 +63,98 @@ export default async function DiagnosticsPage() {
       />
 
       <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Operational trust — ingestion</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p className="text-xs text-label">
+              Records one row per successful <span className="font-mono">POST /api/jobs/ingest</span> run (after{" "}
+              <span className="font-mono">CRON_SECRET</span> auth). Unauthorized attempts are not logged here.
+            </p>
+            {!ingestTrust.available ? (
+              <p className="text-sm text-score-warning">{ingestTrust.reason}</p>
+            ) : (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-label">Last ingest run</p>
+                    {ingestTrust.lastRun ? (
+                      <>
+                        <p className="mt-1 font-mono text-xs text-foreground">
+                          {formatWhen(ingestTrust.lastRun.createdAt)}
+                        </p>
+                        <p className="mt-1 text-xs">
+                          <span className="text-label">Outcome:</span>{" "}
+                          {ingestTrust.lastRun.success ? (
+                            <span className="text-score-success">Completed</span>
+                          ) : (
+                            <span className="text-score-danger">Failed</span>
+                          )}
+                          {ingestTrust.lastRun.durationMs != null ? (
+                            <span className="text-muted-foreground"> · {ingestTrust.lastRun.durationMs} ms</span>
+                          ) : null}
+                        </p>
+                        {ingestTrust.lastRun.success ? (
+                          <ul className="mt-2 space-y-0.5 text-[11px] leading-snug">
+                            <li>
+                              Fetched (after dedupe):{" "}
+                              <span className="font-medium text-foreground">{ingestTrust.lastRun.fetched}</span>
+                            </li>
+                            <li>
+                              Upsert succeeded / failed:{" "}
+                              <span className="font-medium text-foreground">{ingestTrust.lastRun.succeeded}</span> /{" "}
+                              <span className={ingestTrust.lastRun.failed > 0 ? "text-score-warning" : "text-foreground"}>
+                                {ingestTrust.lastRun.failed}
+                              </span>
+                            </li>
+                            <li>
+                              Skipped (empty description):{" "}
+                              <span className="font-medium text-foreground">{ingestTrust.lastRun.skipped}</span>
+                            </li>
+                          </ul>
+                        ) : (
+                          <p className="mt-2 text-xs text-score-danger">
+                            {ingestTrust.lastRun.errorMessage ?? "Unknown error"}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="mt-1 text-xs">No runs recorded yet — trigger ingest with a valid cron secret.</p>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-label">Last successful sync</p>
+                    {ingestTrust.lastSuccess ? (
+                      <>
+                        <p className="mt-1 font-mono text-xs text-foreground">
+                          {formatWhen(ingestTrust.lastSuccess.createdAt)}
+                        </p>
+                        <p className="mt-1 text-[11px]">
+                          Upserts OK:{" "}
+                          <span className="font-medium text-foreground">{ingestTrust.lastSuccess.succeeded}</span>
+                          {ingestTrust.lastSuccess.failed > 0 ? (
+                            <span className="text-score-warning"> · {ingestTrust.lastSuccess.failed} upsert errors</span>
+                          ) : null}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-1 text-xs">—</p>
+                    )}
+                  </div>
+                </div>
+                {ingestTrust.lastRun?.success ? <SourceErrorsBlock raw={ingestTrust.lastRun.sourceErrors} /> : null}
+                {ingestTrust.lastRun?.success && ingestTrust.lastRun.failed > 0 ? (
+                  <p className="text-xs text-score-warning">
+                    Last run completed but some rows failed to upsert — see server logs and{" "}
+                    <span className="font-mono">upsertErrorsPreview</span> in DB for detail.
+                  </p>
+                ) : null}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Application mode</CardTitle>
@@ -120,6 +245,19 @@ export default async function DiagnosticsPage() {
                     : "Set FLASK_BASE_URL and HIRELENS_INTERNAL_API_KEY for REAL mode."
               }
             />
+            <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border py-3 last:border-0">
+              <span className="text-sm text-muted-foreground">Flask process (GET /health)</span>
+              <div className="text-right text-sm font-medium text-foreground">
+                {!flaskLive.checked ? (
+                  <span className="text-label">Skipped</span>
+                ) : flaskLive.ok ? (
+                  <span className="text-score-success">Reachable</span>
+                ) : (
+                  <span className="text-score-danger">Unreachable</span>
+                )}
+                <span className="mt-1 block text-xs font-normal text-label">{flaskLive.message}</span>
+              </div>
+            </div>
             {health.flaskPipelineConfigWarnings.length > 0 && (
               <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-score-warning">
                 {health.flaskPipelineConfigWarnings.map((w, i) => (

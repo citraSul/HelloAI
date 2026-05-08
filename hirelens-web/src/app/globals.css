@@ -10,6 +10,11 @@
   body {
     @apply min-h-screen bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    background-image: radial-gradient(
+      ellipse 110% 52% at 50% -16%,
+      rgba(99, 102, 241, 0.085),
+      transparent 52%
+    );
   }
 
   ::selection {

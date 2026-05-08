@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/db/prisma";
 import { AnalyticsBarChart } from "@/components/analytics-bar-chart";
 import { resolveUserId } from "@/lib/services/user";
@@ -182,7 +182,7 @@ export default async function AnalyticsPage() {
     <AppShell title="Analytics">
       <PageHeader
         title="Analytics"
-        description="Pipeline activity, real application outcomes, and match trends — scoped to your account."
+        description="History and rates across your account — not the working prioritization list. Use Jobs to rank what to do next; use Analytics to see volume, funnel, and trends."
       />
       {usingSample && (
         <p className="mb-6 inline-flex max-w-3xl rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
@@ -196,17 +196,24 @@ export default async function AnalyticsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle>Pipeline performance</CardTitle>
+              <CardDescription className="text-xs font-normal text-muted-foreground">
+                Counts and averages from stored runs — independent of how the Jobs list is sorted today.
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <HeroStat label="Jobs analyzed" value={jobsAnalyzed} />
               <HeroStat label="High match jobs" value={highMatchJobs} />
               <HeroStat label="Tracked applications" value={trackedApplications} />
-              <HeroStat label="Avg impact score" value={Math.round(avgImpactScore)} suffix="%" />
+              <HeroStat label="Avg tailored impact" value={Math.round(avgImpactScore)} suffix="%" />
             </CardContent>
           </Card>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-            <MetricCard label="Apply recommendations" value={applicationsSent} />
+            <MetricCard
+              label="Apply-tier decision rows"
+              value={applicationsSent}
+              hint="Times the engine stored recommendation Apply — not the same as applications you submitted."
+            />
             <MetricCard label="Tracked applications" value={trackedApplications} />
             <MetricCard label="Rejected (tracked)" value={outcomeRejected} />
             <MetricCard
@@ -244,6 +251,9 @@ export default async function AnalyticsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Impact &amp; agents</CardTitle>
+                <CardDescription className="text-xs font-normal text-muted-foreground">
+                  Tailored-impact evaluations and background agent runs — different from the Jobs list sort order.
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -297,19 +307,22 @@ function MetricCard({
   label,
   value,
   suffix,
+  hint,
 }: {
   label: string;
   value: number | string;
   suffix?: string;
+  hint?: string;
 }) {
   return (
     <Card>
       <CardHeader className="pb-2">
         <p className="text-xs font-medium text-label">{label}</p>
-        <p className="pt-1 text-2xl font-bold tabular-nums text-foreground">
+        <p className="pt-1 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
           {value}
           {suffix ?? ""}
         </p>
+        {hint ? <p className="pt-1.5 text-[10px] leading-snug text-muted-foreground">{hint}</p> : null}
       </CardHeader>
     </Card>
   );
@@ -325,9 +338,9 @@ function HeroStat({
   suffix?: string;
 }) {
   return (
-    <div className="rounded-lg border border-border px-4 py-3">
+    <div className="rounded-xl border border-border/55 bg-muted/[0.06] px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
       <p className="text-xs font-medium text-label">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+      <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight text-foreground">
         {value}
         {suffix ?? ""}
       </p>

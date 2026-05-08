@@ -16,6 +16,10 @@ import { parseJobsFeedSort } from "@/lib/jobs-feed-rank";
 import { whyLineFromBreakdown, whyLineFromScoreFallback } from "@/lib/jobs-feed-why-line";
 import { cn } from "@/lib/utils/cn";
 import type { NormalizedImpactMetrics } from "@/lib/types/impact-metrics";
+import { JobsFeedFreshnessStrip } from "@/components/jobs-feed-freshness";
+import { getIngestOperationalTrustSnapshot } from "@/lib/services/ingest-operational-log";
+import { DecisionClarityStrip } from "@/components/decision-clarity-strip";
+import { formatShortRelativeTime } from "@/lib/format-short-relative-time";
 
 type JobWithLatest = JobWithLatestForList;
 
@@ -41,7 +45,7 @@ export default async function JobsPage({
   const sp = await searchParams;
   const sort = parseJobsFeedSort(sp.sort);
 
-  const userId = await resolveUserId();
+  const [userId, ingestSnapshot] = await Promise.all([resolveUserId(), getIngestOperationalTrustSnapshot()]);
   let jobs: JobWithLatest[] = [];
   let loadError = false;
   let statusByJob = new Map<string, ApplicationOutcomeStatus>();
@@ -54,6 +58,8 @@ export default async function JobsPage({
   let latestDecisionByJob = new Map<string, DecisionAnalysis>();
   let impactMetricIdByJob = new Map<string, string | null>();
   let normalizedImpactByJob = new Map<string, NormalizedImpactMetrics | null>();
+  let tailoredUpdatedAtByJob = new Map<string, Date | null>();
+  let impactEvaluatedAtByJob = new Map<string, Date | null>();
 
   try {
     const bundle = await fetchJobsListBundle(userId, { sort });
@@ -63,6 +69,8 @@ export default async function JobsPage({
     latestDecisionByJob = bundle.latestDecisionByJob;
     impactMetricIdByJob = bundle.impactMetricIdByJob;
     normalizedImpactByJob = bundle.normalizedImpactByJob;
+    tailoredUpdatedAtByJob = bundle.tailoredUpdatedAtByJob;
+    impactEvaluatedAtByJob = bundle.impactEvaluatedAtByJob;
   } catch {
     loadError = true;
     jobs = [];
@@ -88,6 +96,24 @@ export default async function JobsPage({
       impactId,
       impactNorm,
     );
+    const tailoredAt = tailoredUpdatedAtByJob.get(job.id) ?? null;
+    const impactAt = impactEvaluatedAtByJob.get(job.id) ?? null;
+    const tailoredRel = formatShortRelativeTime(tailoredAt?.toISOString() ?? null);
+    const impactRel = formatShortRelativeTime(impactAt?.toISOString() ?? null);
+    const continuityText =
+      tailoredAt && impactAt && tailoredAt > impactAt
+        ? "Tailored draft changed after the last impact run. Run Evaluate impact in Tailor to reconnect this row."
+        : impactRel
+          ? `Live recommendation — computed now from your latest match plus tailored impact (${impactRel}).`
+          : tailoredRel
+            ? `Live recommendation from match scoring; tailored draft saved ${tailoredRel} with no impact evaluation on the active version yet.`
+            : null;
+    const recentlyUpdated = Boolean(impactRel || tailoredRel);
+    const recentlyUpdatedLabel = impactRel
+      ? `Impact evaluated ${impactRel}`
+      : tailoredRel
+        ? `Tailored draft saved ${tailoredRel}`
+        : null;
     let whyLine = jobCardWhyLine(job, hasFeedResume);
     if (guidance?.trust.inferredWithoutMatch && !latest) {
       whyLine = hasFeedResume
@@ -106,6 +132,9 @@ export default async function JobsPage({
       decisionBadge: guidance ? { label: guidance.label, tone: guidance.tone } : null,
       decisionTrust: guidance?.trust ?? null,
       trackingStatus: statusByJob.get(job.id) ?? null,
+      continuityText,
+      recentlyUpdated,
+      recentlyUpdatedLabel,
     };
   });
 
@@ -113,7 +142,7 @@ export default async function JobsPage({
     <AppShell title="Jobs">
       <PageHeader
         title="Jobs"
-        description="Ranked opportunities for your resume — match, decision hint, and tracking in one place."
+        description="Prioritized list for one resume at a time — match %, Apply / Consider / Skip hints, and pipeline tracking together. Analytics is for trends; open a job for the full recommendation."
       >
         <Link
           href="/analytics"
@@ -125,12 +154,16 @@ export default async function JobsPage({
         </Link>
       </PageHeader>
 
+      <DecisionClarityStrip placement="jobs" />
+
+      <JobsFeedFreshnessStrip snapshot={ingestSnapshot} />
+
       {!loadError && jobs.length > 0 ? (
-        <div className="mb-6 rounded-2xl border border-border bg-card/40 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
+        <div className="mb-6 rounded-2xl border border-border/55 bg-muted/[0.08] px-4 py-3.5 text-xs leading-relaxed text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           {feedContext.hasAnyResume ? (
             <>
               {feedContext.usedPrimaryResume ? (
-                <p>
+                <p className="text-[13px] text-foreground/85">
                   Showing opportunities ranked for your primary resume
                   {feedContext.resumeTitle ? (
                     <>
@@ -140,7 +173,7 @@ export default async function JobsPage({
                   .
                 </p>
               ) : (
-                <p>
+                <p className="text-[13px] text-foreground/85">
                   Showing opportunities ranked for your resume
                   {feedContext.resumeTitle ? (
                     <>
@@ -150,20 +183,20 @@ export default async function JobsPage({
                   . No primary resume is set — using your most recently updated resume.
                 </p>
               )}
-              <p className="pt-1 text-xs">
-                <Link href="/resumes" className="font-medium text-primary underline-offset-4 hover:underline">
+              <p className="pt-1">
+                <Link href="/resumes" className="font-medium text-primary/90 underline-offset-4 hover:underline">
                   Change primary resume
                 </Link>
               </p>
-              <p className="pt-2 text-xs leading-relaxed text-muted-foreground/90">
-                Apply / Consider / Skip matches your saved decision when it is still current for this resume and job;
-                otherwise it follows match scoring until you save a new decision.
+              <p className="pt-1.5 text-[11px] leading-relaxed text-muted-foreground/80">
+                The decision hint uses your saved Apply / Consider / Skip when it is still current for this resume and
+                job; otherwise it follows match scoring until you save a new decision on the job page.
               </p>
             </>
           ) : (
             <p>
               Add a resume to rank jobs for fit and show decision hints.{" "}
-              <Link href="/resumes" className="font-medium text-primary underline-offset-4 hover:underline">
+              <Link href="/resumes" className="font-medium text-primary/90 underline-offset-4 hover:underline">
                 Resume library
               </Link>
             </p>

@@ -15,7 +15,7 @@ test.describe("jobs list", () => {
 
     const empty = page.getByRole("heading", { name: "No jobs yet" });
     const loadError = page.getByRole("heading", { name: "Could not load jobs" });
-    const firstRow = page.locator("main ul.space-y-3 li").first();
+    const firstRow = page.locator('main ul[class*="space-y-3"] li').first();
 
     await expect(empty.or(loadError).or(firstRow)).toBeVisible();
   });

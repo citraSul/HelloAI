@@ -74,6 +74,7 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
   const [engineDecision, setEngineDecision] = useState<DecisionOutput | null>(null);
   const [engineLoading, setEngineLoading] = useState(false);
   const [engineError, setEngineError] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   const [locked, setLocked] = useState<Record<string, boolean>>({});
 
@@ -207,8 +208,8 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
   const originalSections = useMemo(() => parseResumeSections(originalText), [originalText]);
 
   const fetchEngineDecision = useCallback(
-    async (tailoredIdOverride?: string | null) => {
-      if (!resumeId || !jobId) return;
+    async (tailoredIdOverride?: string | null): Promise<boolean> => {
+      if (!resumeId || !jobId) return false;
       setEngineLoading(true);
       setEngineError(null);
       try {
@@ -226,6 +227,7 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? res.statusText);
         setEngineDecision(data.decision as DecisionOutput);
+        return true;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Decision unavailable";
         setEngineError(msg);
@@ -233,6 +235,7 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
         if (process.env.NODE_ENV === "development") {
           console.error("[HireLens] decision/evaluate failed", e);
         }
+        return false;
       } finally {
         setEngineLoading(false);
       }
@@ -244,9 +247,10 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
     if (!resumeId || !jobId) {
       setEngineDecision(null);
       setEngineError(null);
+      setActionFeedback(null);
       return;
     }
-    fetchEngineDecision();
+    void fetchEngineDecision();
   }, [resumeId, jobId, lastTailoredId, impactRunCompleted, fetchEngineDecision]);
 
   const runTailor = useCallback(async () => {
@@ -277,7 +281,16 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
       setImpactRunCompleted(false);
       setImpactParseWarning(null);
       const tid = (data.tailored?.id as string | undefined) ?? null;
-      await fetchEngineDecision(tid);
+      const ok = await fetchEngineDecision(tid);
+      if (ok) {
+        setActionFeedback(
+          "Resume tailored. Recommendation preview recalculated from the new tailored draft. Match % on Jobs and Job Detail does not change until you run Score match there.",
+        );
+      } else {
+        setActionFeedback(
+          "Resume tailored. Recommendation preview could not refresh yet. Match % on Jobs and Job Detail was not changed.",
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Tailor failed");
     } finally {
@@ -322,7 +335,16 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
           });
         }
       }
-      await fetchEngineDecision(lastTailoredId);
+      const ok = await fetchEngineDecision(lastTailoredId);
+      if (ok) {
+        setActionFeedback(
+          "Impact evaluated. Recommendation preview updated using tailored-impact signals. Jobs list grouping and ranking do not change until the job-page recommendation is refreshed and saved there.",
+        );
+      } else {
+        setActionFeedback(
+          "Impact evaluated. Recommendation preview could not refresh yet. Jobs list grouping and ranking were not changed.",
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Impact failed");
     } finally {
@@ -399,6 +421,7 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
               setImpactParseWarning(null);
               setEngineDecision(null);
               setEngineError(null);
+              setActionFeedback(null);
               router.replace(`${pathname}${buildTailorSearch(next, jobId)}`, { scroll: false });
             }}
           >
@@ -436,6 +459,7 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
               setMissingKeywords([]);
               setEngineDecision(null);
               setEngineError(null);
+              setActionFeedback(null);
               router.replace(`${pathname}${buildTailorSearch(resumeId, next)}`, { scroll: false });
             }}
           >
@@ -468,6 +492,11 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
           </div>
         </div>
         </div>
+        {actionFeedback ? (
+          <p className="mt-3 rounded-lg border border-border/60 bg-muted/[0.08] px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground/90">Update:</span> {actionFeedback}
+          </p>
+        ) : null}
       </div>
 
       {error && <p className="mb-4 text-sm text-score-danger">{error}</p>}
@@ -494,8 +523,8 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
                 )}
               </span>
             </div>
-            <div>
-              <span className="text-label">Impact</span>
+            <div title="Composite tailored-impact score after Evaluate impact (not the same as match % on Jobs).">
+              <span className="text-label">Tailored impact</span>
               <span className="ml-2 font-medium tabular-nums text-score-impact">
                 {impactScore != null ? impactScore.toFixed(1) : "—"}
               </span>
@@ -566,7 +595,7 @@ export function TailorStudio({ mockMode = false }: { mockMode?: boolean }) {
             <p className="text-2xl font-semibold tabular-nums text-primary">
               {keywordGain != null ? `${keywordGain > 0 ? "+" : ""}${keywordGain.toFixed(1)} pp` : "—"}
             </p>
-            <p className="text-xs text-label">Run Evaluate impact after tailoring.</p>
+            <p className="text-xs text-label">Run Evaluate impact after tailoring to fill this in.</p>
           </div>
 
           <div className="space-y-2 border-t border-border pt-4">

@@ -78,7 +78,7 @@ test.describe("job feed ingest", () => {
     await page.goto("/jobs");
     await expect(page.getByRole("heading", { level: 1, name: "Jobs" })).toBeVisible();
 
-    await expect(page.locator("main ul.space-y-3 li").first()).toBeVisible();
+    await expect(page.locator('main ul[class*="space-y-3"] li').first()).toBeVisible();
 
     // Feed rows use title="Imported from job feed" on the source badge (stable, no hardcoded provider titles).
     await expect(page.getByTitle("Imported from job feed").first()).toBeVisible();

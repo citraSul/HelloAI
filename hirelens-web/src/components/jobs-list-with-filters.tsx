@@ -55,6 +55,11 @@ export type JobsListRowVM = {
   } | null;
   /** Outcome for feed resume (primary or default). */
   trackingStatus: ApplicationOutcomeStatus | null;
+  /** Continuity handoff from Tailor/Impact to this list row. */
+  continuityText: string | null;
+  /** Subtle emphasis that this row has recent Tailor/Impact activity. */
+  recentlyUpdated: boolean;
+  recentlyUpdatedLabel: string | null;
 };
 
 function normalizeFilter(v: string | null, allowed: string[], fallback: string) {
@@ -186,23 +191,43 @@ export function JobsListWithFilters({
       : [];
   const renderJobListItem = (job: JobsListRowVM) => {
     const latest = job.latest;
+    const hasSupportingContext = Boolean(job.whyLine || job.continuityText || feedResumeTitle);
     return (
       <li key={job.id}>
-        <Card className="transition-all duration-200 hover:border-border-hover hover:shadow-card">
-          <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-            <div className="min-w-0 flex-1 space-y-2.5 sm:pr-2">
-              <p className="text-base font-semibold leading-snug text-foreground">{job.title}</p>
-              {job.decisionBadge || job.source || (job.trackingStatus && job.trackingStatus !== "saved") ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  {job.decisionBadge ? (
-                    <DecisionListBadge label={job.decisionBadge.label} tone={job.decisionBadge.tone} />
-                  ) : null}
+        <Card
+          className={cn(
+            "border-border/50 bg-card/95 transition-all duration-300 hover:border-border-hover/85 hover:shadow-card-lift",
+            job.recentlyUpdated && "border-primary/35 ring-1 ring-primary/15",
+          )}
+        >
+          <CardContent className="flex flex-col gap-3.5 py-6 sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:py-7">
+            <div className="min-w-0 flex-1 space-y-0 sm:pr-2">
+              <h3 className="text-lg font-semibold leading-snug tracking-[-0.02em] text-foreground md:text-xl">
+                {job.title}
+              </h3>
+              <p className="mt-1.5 text-sm leading-snug text-muted-foreground">{job.company ?? "Company TBD"}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                {job.decisionBadge ? (
+                  <DecisionListBadge
+                    label={job.decisionBadge.label}
+                    tone={job.decisionBadge.tone}
+                    trust={job.decisionTrust}
+                  />
+                ) : null}
+                {job.recentlyUpdatedLabel ? (
+                  <span className="shrink-0 rounded-md border border-primary/30 bg-primary/[0.1] px-2 py-0.5 text-[10px] font-medium tracking-wide text-primary">
+                    Recently updated · {job.recentlyUpdatedLabel}
+                  </span>
+                ) : null}
+              </div>
+              {job.source || (job.trackingStatus && job.trackingStatus !== "saved") ? (
+                <div className="mt-2 flex flex-wrap items-start gap-2">
                   {job.trackingStatus && job.trackingStatus !== "saved" ? (
                     <OutcomeStatusBadge status={job.trackingStatus} />
                   ) : null}
                   {job.source ? (
                     <span
-                      className="shrink-0 rounded-md border border-border bg-muted/30 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-label"
+                      className="shrink-0 rounded-md border border-border/60 bg-muted/20 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
                       title="Imported from job feed"
                     >
                       {job.source}
@@ -210,20 +235,34 @@ export function JobsListWithFilters({
                   ) : null}
                 </div>
               ) : null}
-              <p className="text-sm text-muted-foreground">{job.company ?? "Company TBD"}</p>
-              <p
-                className="line-clamp-2 border-l-2 border-border/70 pl-3 text-xs leading-snug text-muted-foreground/90"
-                title={job.whyLine}
-              >
-                {job.whyLine}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                Based on:{" "}
-                <span className="font-medium text-foreground">
-                  {feedResumeTitle ?? "— add a resume in Resume library"}
-                </span>
-              </p>
-              <div className="flex flex-wrap gap-2 pt-1">
+              {hasSupportingContext ? (
+                <details className="mt-2.5 rounded-lg border border-border/50 bg-muted/[0.05] px-3 py-2">
+                  <summary className="cursor-pointer text-[11px] font-medium text-muted-foreground">
+                    Why this row
+                  </summary>
+                  <div className="pt-2">
+                    <p
+                      className="line-clamp-2 border-l-2 border-primary/20 pl-3 text-[11px] leading-relaxed text-muted-foreground"
+                      title={job.whyLine}
+                    >
+                      {job.whyLine}
+                    </p>
+                    {job.continuityText ? (
+                      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/90">
+                        <span className="font-medium text-foreground/85">Sync: </span>
+                        {job.continuityText}
+                      </p>
+                    ) : null}
+                    <p className="mt-2 text-[10px] leading-snug text-muted-foreground/80">
+                      Based on{" "}
+                      <span className="font-medium text-foreground/90">
+                        {feedResumeTitle ?? "— add a resume in Resume library"}
+                      </span>
+                    </p>
+                  </div>
+                </details>
+              ) : null}
+              <div className="flex flex-wrap gap-2 pt-3">
                 <Link
                   href={detailHref(job.id)}
                   className={cn(ctaClass, jobRowFocus)}
@@ -237,7 +276,7 @@ export function JobsListWithFilters({
                 ) : null}
               </div>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-2 sm:pt-0.5">
+            <div className="flex shrink-0 flex-col items-end gap-2 sm:pt-1">
               {latest ? (
                 <Link
                   href={detailHref(job.id)}
@@ -270,7 +309,7 @@ export function JobsListWithFilters({
 
   return (
     <div className={cn(pending && "opacity-90 transition-opacity")}>
-      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border bg-card/50 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
+      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border/60 bg-muted/[0.08] px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
         <div className="min-w-0 flex-1 sm:min-w-[200px]">
           <label
             htmlFor="jobs-search"
@@ -395,9 +434,13 @@ export function JobsListWithFilters({
           </Button>
         ) : null}
       </div>
-      <p className="mb-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        {listOrderExplainer}
-      </p>
+      <div className="mb-4 space-y-2 rounded-lg border border-border/50 bg-muted/10 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+        <p>{listOrderExplainer}</p>
+        <p className="text-[11px] leading-snug text-muted-foreground/95">
+          Rows and filters use the feed resume named at the bottom of each card (primary when set, otherwise your most
+          recently updated resume). Same resume as the Jobs page banner when it appears.
+        </p>
+      </div>
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -417,22 +460,24 @@ export function JobsListWithFilters({
             </p>
           ) : null}
           {sortParam === "fit" ? (
-            <div className="space-y-5">
+            <div className="space-y-8">
               {fitSections
                 .filter((section) => section.jobs.length > 0)
                 .map((section) => (
                   <section key={section.key} aria-label={section.title}>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-label">
-                      {section.title}
-                    </p>
-                    <ul className="space-y-3">
+                    <div className="mb-3 border-b border-border/70 pb-2.5">
+                      <p className="text-[13px] font-semibold leading-tight tracking-tight text-foreground">
+                        {section.title}
+                      </p>
+                    </div>
+                    <ul className="space-y-3.5">
                       {section.jobs.map((job) => renderJobListItem(job))}
                     </ul>
                   </section>
                 ))}
             </div>
           ) : (
-            <ul className="space-y-3">
+            <ul className="space-y-3.5">
               {filtered.map((job) => renderJobListItem(job))}
             </ul>
           )}
